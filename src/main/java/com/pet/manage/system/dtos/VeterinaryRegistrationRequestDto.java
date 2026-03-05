@@ -1,5 +1,6 @@
 package com.pet.manage.system.dtos;
 
+import com.pet.manage.system.global.validations.OtherPetTypeRequired;
 import com.pet.manage.system.global.validations.PasswordMatches;
 import jakarta.validation.constraints.*;
 import lombok.Data;
@@ -7,6 +8,7 @@ import lombok.Data;
 import java.time.LocalDate;
 @Data
 @PasswordMatches
+@OtherPetTypeRequired
 public class VeterinaryRegistrationRequestDto {
 
     @NotBlank(message = "Owner name is required.")

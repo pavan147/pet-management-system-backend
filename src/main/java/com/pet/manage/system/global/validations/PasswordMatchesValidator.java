@@ -11,6 +11,14 @@ public class PasswordMatchesValidator implements ConstraintValidator<PasswordMat
         if (dto.getPassword() == null || dto.getConfirmPassword() == null) {
             return false;
         }
-        return dto.getPassword().equals(dto.getConfirmPassword());
+
+        if (!dto.getPassword().equals(dto.getConfirmPassword())) {
+            context.disableDefaultConstraintViolation();
+            context.buildConstraintViolationWithTemplate(context.getDefaultConstraintMessageTemplate())
+                    .addPropertyNode("confirmPassword")
+                    .addConstraintViolation();
+            return false;
+        }
+        return true;
     }
 }
