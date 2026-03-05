@@ -1,14 +1,15 @@
 package com.pet.manage.system.dtos;
 
-import com.pet.manage.system.global.validations.OtherPetTypeRequired;
+
 import com.pet.manage.system.global.validations.PasswordMatches;
 import jakarta.validation.constraints.*;
 import lombok.Data;
 
 import java.time.LocalDate;
+
 @Data
 @PasswordMatches
-@OtherPetTypeRequired
+//@OtherPetTypeRequired
 public class VeterinaryRegistrationRequestDto {
 
     @NotBlank(message = "Owner name is required.")
@@ -27,23 +28,25 @@ public class VeterinaryRegistrationRequestDto {
     @NotBlank(message = "Please confirm your password.")
     private String confirmPassword;
 
-    @NotBlank(message = "Pet name is required.")
-    private String petName;
-
-    @NotBlank(message = "Pet type is required.")
-    private String petType;
-
-    private String otherPetType;
-
-    @NotBlank(message = "Breed is required.")
-    private String breed;
-
     @NotBlank(message = "Address is required.")
     private String address;
 
-    @NotNull(message = "Registration date is required.")
-    private LocalDate registrationDate;
+//    @NotBlank(message = "Pet name is required.")
+//    private String petName;
 
-    // Getters and setters (or use Lombok @Data if configured)
-    // ...
+//    @NotBlank(message = "Pet type is required.")
+//    private String petType;
+//
+//    private String otherPetType;
+//
+//    @NotBlank(message = "Breed is required.")
+//    private String breed;
+//
+
+//
+//    @NotNull(message = "Registration date is required.")
+//    private LocalDate registrationDate;
+//
+//    // Getters and setters (or use Lombok @Data if configured)
+//    // ...
 }

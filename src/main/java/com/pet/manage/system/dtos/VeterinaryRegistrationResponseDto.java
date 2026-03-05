@@ -19,19 +19,19 @@ public class VeterinaryRegistrationResponseDto {
     private String password;
 
 
-    private String petName;
-
-
-    private String petType;
-
-    private String otherPetType;
-
-
-    private String breed;
-
-
-    private String address;
-
-
-    private LocalDate registrationDate;
+//    private String petName;
+//
+//
+//    private String petType;
+//
+//    private String otherPetType;
+//
+//
+//    private String breed;
+//
+//
+//    private String address;
+//
+//
+//    private LocalDate registrationDate;
 }

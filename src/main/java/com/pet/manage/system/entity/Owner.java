@@ -2,24 +2,23 @@ package com.pet.manage.system.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
-import java.time.LocalDate;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
-@Table(name = "veterinary_registration")
+@Table(name = "owner")
 @Data
-public class VeterinaryRegistration {
+public class Owner {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
     private String ownerName;
     private String email;
     private String phoneNumber;
     private String password;
-    private String petName;
-    private String petType;
-    private String otherPetType;
-    private String breed;
     private String address;
-    private LocalDate registrationDate;
+
+    @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Pet> pets = new ArrayList<>();
 }
