@@ -14,7 +14,9 @@ public class Owner {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     private String ownerName;
+    @Column(unique = true)
     private String email;
+    @Column(unique = true)
     private String phoneNumber;
     private String password;
     private String address;
