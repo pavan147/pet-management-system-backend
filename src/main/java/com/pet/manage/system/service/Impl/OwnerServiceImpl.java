@@ -34,9 +34,9 @@ public class OwnerServiceImpl implements OwnerService {
     public OwnerResponseDto getOwnerByEmailOrPhone(String email, String phoneNumber) {
         Owner owner = null;
         if (email != null && !email.isEmpty()) {
-            owner = ownerRepository.findByEmail(email);
+            owner = ownerRepository.findByEmail(email).get();
         } else if (phoneNumber != null && !phoneNumber.isEmpty()) {
-            owner = ownerRepository.findByPhoneNumber(phoneNumber);
+            owner = ownerRepository.findByPhoneNumber(phoneNumber).get();
         }
         return Utils.getOwnerDetails(owner , modelMapper);
     }

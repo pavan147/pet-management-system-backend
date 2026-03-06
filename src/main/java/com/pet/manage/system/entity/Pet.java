@@ -16,7 +16,9 @@ public class Pet {
     private String petType;
     private String otherPetType;
     private String breed;
-    private LocalDate registrationDate;
+    private LocalDate registrationDate = LocalDate.now();
+    private LocalDate dob;
+    private String description;
 
     @ManyToOne
     @JoinColumn(name = "owner_id")
