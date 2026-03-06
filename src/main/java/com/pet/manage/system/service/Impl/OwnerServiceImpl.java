@@ -4,13 +4,13 @@ import com.pet.manage.system.dtos.VeterinaryRegistrationRequestDto;
 import com.pet.manage.system.dtos.VeterinaryRegistrationResponseDto;
 import com.pet.manage.system.entity.Owner;
 import com.pet.manage.system.repository.OwnerRepository;
-import com.pet.manage.system.service.VeterinaryRegistrationService;
+import com.pet.manage.system.service.OwnerService;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
-public class VeterinaryRegistrationServiceImpl implements VeterinaryRegistrationService {
+public class OwnerServiceImpl implements OwnerService {
 
     @Autowired
     private OwnerRepository ownerRepository;
@@ -27,4 +27,17 @@ public class VeterinaryRegistrationServiceImpl implements VeterinaryRegistration
         // Map Entity to Response DTO
         return modelMapper.map(savedEntity, VeterinaryRegistrationResponseDto.class);
     }
+
+    @Override
+    public Owner getOwnerByEmailOrPhone(String email, String phoneNumber) {
+        Owner owner = null;
+        if (email != null && !email.isEmpty()) {
+            owner = ownerRepository.findByEmail(email);
+        } else if (phoneNumber != null && !phoneNumber.isEmpty()) {
+            owner = ownerRepository.findByPhoneNumber(phoneNumber);
+        }
+        return owner;
+    }
+
+
 }
