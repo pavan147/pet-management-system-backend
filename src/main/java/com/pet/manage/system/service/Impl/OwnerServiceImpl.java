@@ -1,5 +1,7 @@
 package com.pet.manage.system.service.Impl;
 
+import com.pet.manage.system.Utils;
+import com.pet.manage.system.dtos.OwnerResponseDto;
 import com.pet.manage.system.dtos.VeterinaryRegistrationRequestDto;
 import com.pet.manage.system.dtos.VeterinaryRegistrationResponseDto;
 import com.pet.manage.system.entity.Owner;
@@ -29,14 +31,14 @@ public class OwnerServiceImpl implements OwnerService {
     }
 
     @Override
-    public Owner getOwnerByEmailOrPhone(String email, String phoneNumber) {
+    public OwnerResponseDto getOwnerByEmailOrPhone(String email, String phoneNumber) {
         Owner owner = null;
         if (email != null && !email.isEmpty()) {
             owner = ownerRepository.findByEmail(email);
         } else if (phoneNumber != null && !phoneNumber.isEmpty()) {
             owner = ownerRepository.findByPhoneNumber(phoneNumber);
         }
-        return owner;
+        return Utils.getOwnerDetails(owner , modelMapper);
     }
 
 
