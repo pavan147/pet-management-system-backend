@@ -19,6 +19,12 @@ public class Pet {
     private LocalDate registrationDate = LocalDate.now();
     private LocalDate dob;
     private String description;
+    @Lob
+    @Column(name = "photo" , columnDefinition = "MEDIUMBLOB")
+    private byte[] photo;
+
+    @Column(name = "photo_content_type")
+    private String photoContentType;
 
     @ManyToOne
     @JoinColumn(name = "owner_id")

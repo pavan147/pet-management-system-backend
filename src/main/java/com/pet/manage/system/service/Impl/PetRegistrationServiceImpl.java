@@ -11,6 +11,9 @@ import com.pet.manage.system.service.PetRegistrationService;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
 
 @Service
 public class PetRegistrationServiceImpl implements PetRegistrationService {
@@ -25,7 +28,7 @@ public class PetRegistrationServiceImpl implements PetRegistrationService {
     private ModelMapper modelMapper;
 
     @Override
-    public OwnerResponseDto registerPet(PetRegistrationDto petRegistrationDto) {
+    public OwnerResponseDto registerPet(PetRegistrationDto petRegistrationDto , MultipartFile petPhoto) throws IOException {
 
         Owner owner = ownerRepository.findByEmail(petRegistrationDto.getOwnerContact())
                 .orElse(ownerRepository.findByPhoneNumber(petRegistrationDto.getOwnerContact())
@@ -36,6 +39,11 @@ public class PetRegistrationServiceImpl implements PetRegistrationService {
         }
         Pet petEntity = modelMapper.map(petRegistrationDto, Pet.class);
         petEntity.setOwner(owner);
+        // Save photo if present
+        if (petPhoto != null && !petPhoto.isEmpty()) {
+            petEntity.setPhoto(petPhoto.getBytes()); // You may want to handle IOException
+            petEntity.setPhotoContentType(petPhoto.getContentType());
+        }
         petRepository.save(petEntity);
 
         return Utils.getOwnerDetails(owner, modelMapper);
