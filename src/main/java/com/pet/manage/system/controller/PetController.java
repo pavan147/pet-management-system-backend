@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pet.manage.system.Utils;
 import com.pet.manage.system.dtos.OwnerResponseDto;
 import com.pet.manage.system.dtos.PetRegistrationDto;
+import com.pet.manage.system.dtos.PetVaccinationRecorRequestdDTO;
+import com.pet.manage.system.dtos.PetVaccinationRecorResponsedDTO;
+import com.pet.manage.system.entity.PetVaccinationRecord;
 import com.pet.manage.system.service.PetRegistrationService;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validator;
@@ -28,6 +31,7 @@ public class PetController {
     @Autowired
     private Validator validator; // Add this
 
+
     @PostMapping(value = "/register", consumes = {"multipart/form-data"})
     public ResponseEntity<?> registerPet(
             @RequestPart("petRegistrationDto") String petRegistrationDtoStr,
@@ -51,5 +55,13 @@ public class PetController {
 
         OwnerResponseDto ownerResponseDto = petRegistrationService.registerPet(petRegistrationDto, petPhoto);
         return ResponseEntity.ok(ownerResponseDto);
+    }
+
+
+
+    @PostMapping("/vaccination-record")
+    public ResponseEntity<PetVaccinationRecorResponsedDTO> saveVaccinationRecord(@RequestBody PetVaccinationRecorRequestdDTO petVaccinationRecorRequestdDTO) {
+        PetVaccinationRecorResponsedDTO petVaccinationRecorResponsedDTO = petRegistrationService.saveVaccinationRecord(petVaccinationRecorRequestdDTO);
+        return ResponseEntity.ok(petVaccinationRecorResponsedDTO);
     }
 }

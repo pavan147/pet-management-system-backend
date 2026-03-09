@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "pet")
@@ -29,4 +31,7 @@ public class Pet {
     @ManyToOne
     @JoinColumn(name = "owner_id")
     private Owner owner;
+
+    @OneToMany(mappedBy = "pet", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<PetVaccinationRecord> vaccinationRecords = new ArrayList<>();
 }
