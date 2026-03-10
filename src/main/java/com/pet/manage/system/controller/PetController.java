@@ -9,6 +9,7 @@ import com.pet.manage.system.dtos.PetVaccinationRecorResponsedDTO;
 import com.pet.manage.system.entity.PetVaccinationRecord;
 import com.pet.manage.system.service.PetRegistrationService;
 import jakarta.validation.ConstraintViolation;
+import jakarta.validation.Valid;
 import jakarta.validation.Validator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -60,7 +61,7 @@ public class PetController {
 
 
     @PostMapping("/vaccination-record")
-    public ResponseEntity<PetVaccinationRecorResponsedDTO> saveVaccinationRecord(@RequestBody PetVaccinationRecorRequestdDTO petVaccinationRecorRequestdDTO) {
+    public ResponseEntity<PetVaccinationRecorResponsedDTO> saveVaccinationRecord(@Valid @RequestBody PetVaccinationRecorRequestdDTO petVaccinationRecorRequestdDTO) {
         PetVaccinationRecorResponsedDTO petVaccinationRecorResponsedDTO = petRegistrationService.saveVaccinationRecord(petVaccinationRecorRequestdDTO);
         return ResponseEntity.ok(petVaccinationRecorResponsedDTO);
     }
