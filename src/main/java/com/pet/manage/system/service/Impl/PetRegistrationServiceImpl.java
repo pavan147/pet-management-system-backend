@@ -1,10 +1,7 @@
 package com.pet.manage.system.service.Impl;
 
 import com.pet.manage.system.Utils;
-import com.pet.manage.system.dtos.OwnerResponseDto;
-import com.pet.manage.system.dtos.PetRegistrationDto;
-import com.pet.manage.system.dtos.PetVaccinationRecorRequestdDTO;
-import com.pet.manage.system.dtos.PetVaccinationRecorResponsedDTO;
+import com.pet.manage.system.dtos.*;
 import com.pet.manage.system.entity.Owner;
 import com.pet.manage.system.entity.Pet;
 import com.pet.manage.system.entity.PetVaccinationRecord;
@@ -78,5 +75,10 @@ public class PetRegistrationServiceImpl implements PetRegistrationService {
         PetVaccinationRecord petVaccinationRecordSave = vaccinationRecordRepository.save(petVaccinationRecordEntity);
 
         return  modelMapper.map(petVaccinationRecordSave, PetVaccinationRecorResponsedDTO.class);
+    }
+
+    @Override
+    public void savePetMedicalRecord(PetMedicalRequestDto petMedicalRequestDto) {
+
     }
 }

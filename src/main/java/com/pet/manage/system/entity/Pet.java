@@ -34,4 +34,7 @@ public class Pet {
 
     @OneToMany(mappedBy = "pet", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PetVaccinationRecord> vaccinationRecords = new ArrayList<>();
+
+    @OneToMany(mappedBy = "pet", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<PetMedical> petMedicals= new ArrayList<>();
 }

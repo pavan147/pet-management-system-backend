@@ -2,10 +2,7 @@ package com.pet.manage.system.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pet.manage.system.Utils;
-import com.pet.manage.system.dtos.OwnerResponseDto;
-import com.pet.manage.system.dtos.PetRegistrationDto;
-import com.pet.manage.system.dtos.PetVaccinationRecorRequestdDTO;
-import com.pet.manage.system.dtos.PetVaccinationRecorResponsedDTO;
+import com.pet.manage.system.dtos.*;
 import com.pet.manage.system.entity.PetVaccinationRecord;
 import com.pet.manage.system.service.PetRegistrationService;
 import jakarta.validation.ConstraintViolation;
@@ -64,5 +61,12 @@ public class PetController {
     public ResponseEntity<PetVaccinationRecorResponsedDTO> saveVaccinationRecord(@Valid @RequestBody PetVaccinationRecorRequestdDTO petVaccinationRecorRequestdDTO) {
         PetVaccinationRecorResponsedDTO petVaccinationRecorResponsedDTO = petRegistrationService.saveVaccinationRecord(petVaccinationRecorRequestdDTO);
         return ResponseEntity.ok(petVaccinationRecorResponsedDTO);
+    }
+
+
+    @PostMapping("/medical-details")
+    public ResponseEntity<PetVaccinationRecorResponsedDTO> savePetMedicalDetails(@RequestBody PetMedicalRequestDto petMedicalRequestDto) {
+        System.out.println(petMedicalRequestDto);
+        return ResponseEntity.ok(null);
     }
 }
