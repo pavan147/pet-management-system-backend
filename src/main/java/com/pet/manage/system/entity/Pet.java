@@ -21,6 +21,8 @@ public class Pet {
     private LocalDate registrationDate = LocalDate.now();
     private LocalDate dob;
     private String description;
+    private String gender;
+    private String allergies;
     @Lob
     @Column(name = "photo" , columnDefinition = "MEDIUMBLOB")
     private byte[] photo;

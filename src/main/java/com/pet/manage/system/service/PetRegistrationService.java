@@ -13,4 +13,6 @@ public interface PetRegistrationService {
     PetVaccinationRecorResponsedDTO saveVaccinationRecord(PetVaccinationRecorRequestdDTO petVaccinationRecorRequestdDTO);
 
      void savePetMedicalRecord(PetMedicalRequestDto petMedicalRequestDto);
+
+    PetMedicalRespnseDto  savePetMedicalDetails(PetMedicalRequestDto petMedicalRequestDto);
 }

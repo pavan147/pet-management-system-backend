@@ -29,7 +29,7 @@ public class Prescription {
 
     @ManyToOne
     @JoinColumn(name = "pet_medical_id")
-    private PetMedical petMedicalRequest;
+    private PetMedical petMedical;
 
 
 }

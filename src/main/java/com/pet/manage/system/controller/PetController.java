@@ -66,7 +66,7 @@ public class PetController {
 
     @PostMapping("/medical-details")
     public ResponseEntity<PetVaccinationRecorResponsedDTO> savePetMedicalDetails(@RequestBody PetMedicalRequestDto petMedicalRequestDto) {
-        System.out.println(petMedicalRequestDto);
+        petRegistrationService.savePetMedicalDetails(petMedicalRequestDto);
         return ResponseEntity.ok(null);
     }
 }
