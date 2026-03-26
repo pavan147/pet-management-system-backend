@@ -2,13 +2,12 @@ package com.pet.manage.system.service.Impl;
 
 import com.pet.manage.system.Utils;
 import com.pet.manage.system.dtos.*;
+import com.pet.manage.system.dtos.request.AppointmentRequestDTO;
+import com.pet.manage.system.dtos.response.AppointmentResponseDTO;
 import com.pet.manage.system.entity.*;
-import com.pet.manage.system.repository.OwnerRepository;
-import com.pet.manage.system.repository.PetMedicalRepository;
-import com.pet.manage.system.repository.PetRepository;
-import com.pet.manage.system.repository.PetVaccinationRecordRepository;
+import com.pet.manage.system.repository.*;
 import com.pet.manage.system.service.HelperUtilService;
-import com.pet.manage.system.service.PetRegistrationService;
+import com.pet.manage.system.service.PetService;
 import org.modelmapper.ModelMapper;
 import org.modelmapper.TypeToken;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,7 +19,7 @@ import java.lang.reflect.Type;
 import java.util.List;
 
 @Service
-public class PetRegistrationServiceImpl implements PetRegistrationService {
+public class PetServiceImpl implements PetService {
 
     @Autowired
     private OwnerRepository ownerRepository;
@@ -38,12 +37,15 @@ public class PetRegistrationServiceImpl implements PetRegistrationService {
     private PetMedicalRepository petMedicalRepository;
 
     @Autowired
+    private AppointmentRepository appointmentRepository;
+
+    @Autowired
     private ModelMapper modelMapper;
 
     @Override
-    public OwnerResponseDto registerPet(PetRegistrationDto petRegistrationDto , MultipartFile petPhoto) throws IOException {
+    public OwnerResponseDto registerPet(PetRegistrationDto petRegistrationDto, MultipartFile petPhoto) throws IOException {
 
-        Owner owner =  helperUtilService.findOwnerByContact(petRegistrationDto.getOwnerContact());
+        Owner owner = helperUtilService.findOwnerByContact(petRegistrationDto.getOwnerContact());
 
         if (owner == null) {
             throw new RuntimeException("Owner not found with provided contact.");
@@ -64,7 +66,7 @@ public class PetRegistrationServiceImpl implements PetRegistrationService {
     @Override
     public PetVaccinationRecorResponsedDTO saveVaccinationRecord(PetVaccinationRecorRequestdDTO petVaccinationRecorRequestdDTO) {
 
-        Owner owner =  helperUtilService.findOwnerByContact(petVaccinationRecorRequestdDTO.getOwnerContact());
+        Owner owner = helperUtilService.findOwnerByContact(petVaccinationRecorRequestdDTO.getOwnerContact());
 
         PetVaccinationRecord petVaccinationRecordEntity = modelMapper.map(petVaccinationRecorRequestdDTO, PetVaccinationRecord.class);
         owner.getPets().stream()
@@ -72,12 +74,14 @@ public class PetRegistrationServiceImpl implements PetRegistrationService {
                 .findFirst()
                 .ifPresentOrElse(
                         pet -> petVaccinationRecordEntity.setPet(pet),
-                        () -> { throw new RuntimeException("Pet not found with provided name for the owner."); }
+                        () -> {
+                            throw new RuntimeException("Pet not found with provided name for the owner.");
+                        }
                 );
 
         PetVaccinationRecord petVaccinationRecordSave = vaccinationRecordRepository.save(petVaccinationRecordEntity);
 
-        return  modelMapper.map(petVaccinationRecordSave, PetVaccinationRecorResponsedDTO.class);
+        return modelMapper.map(petVaccinationRecordSave, PetVaccinationRecorResponsedDTO.class);
     }
 
     @Override
@@ -87,7 +91,7 @@ public class PetRegistrationServiceImpl implements PetRegistrationService {
 
     @Override
     public PetMedicalRespnseDto savePetMedicalDetails(PetMedicalRequestDto petMedicalRequestDto) {
-        Owner owner =  helperUtilService.findOwnerByContact(petMedicalRequestDto.getOwnerContact());
+        Owner owner = helperUtilService.findOwnerByContact(petMedicalRequestDto.getOwnerContact());
 
         PetMedical petMedical = PetMedical.builder()
                 .diagnosis(petMedicalRequestDto.getDiagnosis())
@@ -104,10 +108,13 @@ public class PetRegistrationServiceImpl implements PetRegistrationService {
                 .findFirst()
                 .ifPresentOrElse(
                         petMedical::setPet,
-                        () -> { throw new RuntimeException("Pet not found with provided name for the owner."); }
+                        () -> {
+                            throw new RuntimeException("Pet not found with provided name for the owner.");
+                        }
                 );
 
-        Type listType = new TypeToken<List<Prescription>>() {}.getType();
+        Type listType = new TypeToken<List<Prescription>>() {
+        }.getType();
         List<Prescription> prescriptions = modelMapper.map(
                 petMedicalRequestDto.getPrescriptions(), listType
         );
@@ -116,5 +123,17 @@ public class PetRegistrationServiceImpl implements PetRegistrationService {
 
         PetMedical savedPetMedical = petMedicalRepository.save(petMedical);
         return null;
+    }
+
+    @Override
+    public AppointmentResponseDTO bookAppointment(AppointmentRequestDTO appointmentRequestDTO) {
+
+        Appointment appointment = modelMapper.map(appointmentRequestDTO, Appointment.class);
+
+        Appointment saveAppointment = appointmentRepository.save(appointment);
+
+        AppointmentResponseDTO appointmentResponseDTO = modelMapper.map(saveAppointment, AppointmentResponseDTO.class);
+
+        return appointmentResponseDTO;
     }
 }

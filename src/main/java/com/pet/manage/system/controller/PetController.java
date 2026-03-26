@@ -3,19 +3,18 @@ package com.pet.manage.system.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pet.manage.system.Utils;
 import com.pet.manage.system.dtos.*;
-import com.pet.manage.system.entity.PetVaccinationRecord;
-import com.pet.manage.system.service.PetRegistrationService;
+import com.pet.manage.system.dtos.request.AppointmentRequestDTO;
+import com.pet.manage.system.dtos.response.AppointmentResponseDTO;
+import com.pet.manage.system.service.PetService;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Valid;
 import jakarta.validation.Validator;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 
-import java.io.IOException;
 import java.util.Set;
 
 @RestController
@@ -24,7 +23,7 @@ import java.util.Set;
 public class PetController {
 
     @Autowired
-    private PetRegistrationService petRegistrationService;
+    private PetService petService;
 
     @Autowired
     private Validator validator; // Add this
@@ -51,7 +50,7 @@ public class PetController {
             return ResponseEntity.badRequest().body(Utils.errorStringToJson(sb.toString()));
         }
 
-        OwnerResponseDto ownerResponseDto = petRegistrationService.registerPet(petRegistrationDto, petPhoto);
+        OwnerResponseDto ownerResponseDto = petService.registerPet(petRegistrationDto, petPhoto);
         return ResponseEntity.ok(ownerResponseDto);
     }
 
@@ -59,14 +58,20 @@ public class PetController {
 
     @PostMapping("/vaccination-record")
     public ResponseEntity<PetVaccinationRecorResponsedDTO> saveVaccinationRecord(@Valid @RequestBody PetVaccinationRecorRequestdDTO petVaccinationRecorRequestdDTO) {
-        PetVaccinationRecorResponsedDTO petVaccinationRecorResponsedDTO = petRegistrationService.saveVaccinationRecord(petVaccinationRecorRequestdDTO);
+        PetVaccinationRecorResponsedDTO petVaccinationRecorResponsedDTO = petService.saveVaccinationRecord(petVaccinationRecorRequestdDTO);
         return ResponseEntity.ok(petVaccinationRecorResponsedDTO);
     }
 
 
     @PostMapping("/medical-details")
     public ResponseEntity<PetVaccinationRecorResponsedDTO> savePetMedicalDetails(@RequestBody PetMedicalRequestDto petMedicalRequestDto) {
-        petRegistrationService.savePetMedicalDetails(petMedicalRequestDto);
+        petService.savePetMedicalDetails(petMedicalRequestDto);
         return ResponseEntity.ok(null);
+    }
+
+
+    @PostMapping("/book-appointment")
+    public AppointmentResponseDTO createAppointment(@RequestBody AppointmentRequestDTO dto) {
+        return petService.bookAppointment(dto);
     }
 }

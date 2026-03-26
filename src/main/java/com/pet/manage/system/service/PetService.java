@@ -1,12 +1,13 @@
 package com.pet.manage.system.service;
 
 import com.pet.manage.system.dtos.*;
-import com.pet.manage.system.entity.PetVaccinationRecord;
+import com.pet.manage.system.dtos.request.AppointmentRequestDTO;
+import com.pet.manage.system.dtos.response.AppointmentResponseDTO;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 
-public interface PetRegistrationService {
+public interface PetService {
 
     OwnerResponseDto registerPet(PetRegistrationDto petRegistrationDto , MultipartFile petPhoto) throws IOException;
 
@@ -15,4 +16,6 @@ public interface PetRegistrationService {
      void savePetMedicalRecord(PetMedicalRequestDto petMedicalRequestDto);
 
     PetMedicalRespnseDto  savePetMedicalDetails(PetMedicalRequestDto petMedicalRequestDto);
+
+    AppointmentResponseDTO bookAppointment(AppointmentRequestDTO appointmentRequestDTO);
 }
