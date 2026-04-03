@@ -1,5 +1,6 @@
 package com.pet.manage.system.config;
 
+import com.pet.manage.system.commons.Constants;
 import com.pet.manage.system.security.JwtAuthenticationEntryPoint;
 import com.pet.manage.system.security.JwtAuthenticationFilter;
 import lombok.AllArgsConstructor;
@@ -47,10 +48,11 @@ public class SpringSecurityConfig {
 //                    authorize.requestMatchers(HttpMethod.DELETE, "/api/**").hasRole("ADMIN");
 //                    authorize.requestMatchers(HttpMethod.GET, "/api/**").hasAnyRole("ADMIN", "USER");
 //                    authorize.requestMatchers(HttpMethod.PATCH, "/api/**").hasAnyRole("ADMIN", "USER");
-                    authorize.requestMatchers(HttpMethod.GET, "/test").permitAll();
-                    authorize.requestMatchers("/api/auth/**").permitAll();
-                    authorize.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
-                    authorize.anyRequest().authenticated();
+                    authorize.requestMatchers(Constants.PUBLIC_URLS).permitAll()
+                            .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                            .anyRequest().authenticated();
+//                    authorize.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
+//                    authorize.anyRequest().authenticated();
                 }).httpBasic(Customizer.withDefaults());
       //Unauthorised use try to access then spring security throw exception
         http.exceptionHandling( exception -> exception

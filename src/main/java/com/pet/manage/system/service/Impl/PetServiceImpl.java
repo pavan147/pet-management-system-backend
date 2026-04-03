@@ -5,6 +5,7 @@ import com.pet.manage.system.dtos.*;
 import com.pet.manage.system.dtos.request.AppointmentRequestDTO;
 import com.pet.manage.system.dtos.response.AppointmentResponseDTO;
 import com.pet.manage.system.entity.*;
+import com.pet.manage.system.global.exception.DuplicateAppointmentException;
 import com.pet.manage.system.repository.*;
 import com.pet.manage.system.service.HelperUtilService;
 import com.pet.manage.system.service.PetService;
@@ -16,7 +17,11 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
+import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class PetServiceImpl implements PetService {
@@ -128,6 +133,18 @@ public class PetServiceImpl implements PetService {
     @Override
     public AppointmentResponseDTO bookAppointment(AppointmentRequestDTO appointmentRequestDTO) {
 
+        // Check if already booked for the same name and date
+        Optional<Appointment> existing = appointmentRepository.findByEmailAndNameAndPhoneAndDate(
+                appointmentRequestDTO.getEmail(),
+                appointmentRequestDTO.getName(),
+                appointmentRequestDTO.getPhone(),
+                appointmentRequestDTO.getDate()
+        );
+
+        if (existing.isPresent()) {
+            throw new DuplicateAppointmentException("You have already booked an appointment for this date.");
+        }
+
         Appointment appointment = modelMapper.map(appointmentRequestDTO, Appointment.class);
 
         Appointment saveAppointment = appointmentRepository.save(appointment);
@@ -135,5 +152,43 @@ public class PetServiceImpl implements PetService {
         AppointmentResponseDTO appointmentResponseDTO = modelMapper.map(saveAppointment, AppointmentResponseDTO.class);
 
         return appointmentResponseDTO;
+    }
+
+    @Override
+    public List<AppointmentResponseDTO> getAppointmentsByDate(String date) {
+        if (date == null || date.isEmpty()) {
+            date = LocalDate.now().toString();
+        }
+        List<Appointment> appointments = appointmentRepository.findByDate(date);
+
+        List<AppointmentResponseDTO> dtos = appointments.stream()
+                .map(appointment -> modelMapper.map(appointment, AppointmentResponseDTO.class))
+                .collect(Collectors.toList());
+
+        // Sort: waiting -> pending -> checked-in -> others, each by id ascending
+        dtos.sort(Comparator
+                .comparing((AppointmentResponseDTO a) -> {
+                    String status = a.getStatus();
+                    if ("waiting".equalsIgnoreCase(status)) return 0;
+                    if ("pending".equalsIgnoreCase(status)) return 1;
+                    if ("checked-in".equalsIgnoreCase(status)) return 2;
+                    return 3;
+                })
+                .thenComparing(AppointmentResponseDTO::getId)
+        );
+
+        return dtos;
+    }
+
+    @Override
+    public AppointmentResponseDTO updateStatus(Long id, String status, String action) {
+        Appointment appt = appointmentRepository.findById(id).orElse(null);
+        if (appt != null) {
+            appt.setStatus(status);
+            appt.setAction(action);
+            appointmentRepository.save(appt);
+        }
+
+        return modelMapper.map(appt, AppointmentResponseDTO.class);
     }
 }

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 
+import java.util.List;
 import java.util.Set;
 
 @RestController
@@ -71,7 +72,19 @@ public class PetController {
 
 
     @PostMapping("/book-appointment")
-    public AppointmentResponseDTO createAppointment(@RequestBody AppointmentRequestDTO dto) {
+    public AppointmentResponseDTO createAppointment(@Valid  @RequestBody AppointmentRequestDTO dto) {
         return petService.bookAppointment(dto);
+    }
+
+    @GetMapping("/appointments")
+    public List<AppointmentResponseDTO> getAppointments(@RequestParam(required = false) String date) {
+        return petService.getAppointmentsByDate(date);
+    }
+
+    // Update status and action
+    @PutMapping("/appointments/{id}/status")
+    public AppointmentResponseDTO updateStatus(@PathVariable Long id, @RequestBody StatusUpdateRequest request
+    ) {
+        return petService.updateStatus(id, request.getStatus(), request.getAction());
     }
 }

@@ -38,4 +38,11 @@ public class GlobalExceptionHandler {
         error.put("error", ex.getMessage());
         return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
     }
+
+    @ExceptionHandler(DuplicateAppointmentException.class)
+    public ResponseEntity<Map<String, String>> handleDuplicateAppointment(DuplicateAppointmentException ex) {
+        Map<String, String> error = new HashMap<>();
+        error.put("date", ex.getMessage());
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
 }

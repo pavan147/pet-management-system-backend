@@ -6,6 +6,7 @@ import com.pet.manage.system.dtos.response.AppointmentResponseDTO;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.List;
 
 public interface PetService {
 
@@ -18,4 +19,8 @@ public interface PetService {
     PetMedicalRespnseDto  savePetMedicalDetails(PetMedicalRequestDto petMedicalRequestDto);
 
     AppointmentResponseDTO bookAppointment(AppointmentRequestDTO appointmentRequestDTO);
+
+    List<AppointmentResponseDTO> getAppointmentsByDate(String date);
+
+    AppointmentResponseDTO updateStatus(Long id, String status, String action);
 }

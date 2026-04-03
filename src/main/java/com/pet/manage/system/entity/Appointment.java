@@ -18,4 +18,7 @@ public class Appointment {
     private String date; // Store as String or LocalDate depending on your needs
     private String time;
     private String reason;
+
+    private String status; // waiting, checked-in, pending
+    private String action; // check-in, not-present, recall, etc.
 }
