@@ -3,11 +3,11 @@ package com.pet.manage.system.dtos;
 import lombok.Data;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
 public class PetMedicalRespnseDto {
+    private Long petMedicalId;
     private String  ownerContact;
     private Long petId;
     private String allergies;

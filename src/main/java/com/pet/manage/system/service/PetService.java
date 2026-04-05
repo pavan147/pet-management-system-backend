@@ -28,4 +28,6 @@ public interface PetService {
     boolean isOwnerRegistered(String email);
 
     PetDashboardDTO getDashboardData();
+
+    byte[] downloadPrescriptionPdf(Long petId, Long petMedicalId);
 }

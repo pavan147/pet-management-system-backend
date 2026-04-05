@@ -11,6 +11,9 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Valid;
 import jakarta.validation.Validator;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -66,9 +69,9 @@ public class PetController {
 
 
     @PostMapping("/medical-details")
-    public ResponseEntity<PetVaccinationRecorResponsedDTO> savePetMedicalDetails(@RequestBody PetMedicalRequestDto petMedicalRequestDto) {
-        petService.savePetMedicalDetails(petMedicalRequestDto);
-        return ResponseEntity.ok(null);
+    public ResponseEntity<PetMedicalRespnseDto> savePetMedicalDetails(@RequestBody PetMedicalRequestDto petMedicalRequestDto) {
+        PetMedicalRespnseDto response = petService.savePetMedicalDetails(petMedicalRequestDto);
+        return ResponseEntity.ok(response);
     }
 
 
@@ -98,5 +101,20 @@ public class PetController {
     public ResponseEntity<PetDashboardDTO> getDashboard() {
         PetDashboardDTO dashboard = petService.getDashboardData();
         return ResponseEntity.ok(dashboard);
+    }
+
+    @GetMapping("/medical-details/prescription-pdf")
+    public ResponseEntity<byte[]> downloadPrescriptionPdf(
+            @RequestParam Long petId,
+            @RequestParam Long petMedicalId
+    ) {
+        byte[] pdfBytes = petService.downloadPrescriptionPdf(petId, petMedicalId);
+        String fileName = "pet_" + petId + "_medical_" + petMedicalId + "_prescription.pdf";
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(fileName).build().toString())
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdfBytes);
     }
 }

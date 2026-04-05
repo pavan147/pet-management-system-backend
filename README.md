@@ -14,4 +14,8 @@ postman request POST 'localhost:8080/api/auth/login' \
 --------ROLES-----------
 1	ROLE_ADMIN
 2	ROLE_PET_OWNER
+3	ROLE_RECEPTIONIST
+4	ROLE_DOCTOR
+	
+	
 	
