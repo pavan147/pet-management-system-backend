@@ -74,6 +74,7 @@ public class PetServiceImpl implements PetService {
         Owner owner = helperUtilService.findOwnerByContact(petVaccinationRecorRequestdDTO.getOwnerContact());
 
         PetVaccinationRecord petVaccinationRecordEntity = modelMapper.map(petVaccinationRecorRequestdDTO, PetVaccinationRecord.class);
+        petVaccinationRecordEntity.setId(null); // Ensure it's a new entity
         owner.getPets().stream()
                 .filter(pet -> pet.getId().equals(petVaccinationRecorRequestdDTO.getPetId()))
                 .findFirst()
@@ -102,6 +103,7 @@ public class PetServiceImpl implements PetService {
                 .diagnosis(petMedicalRequestDto.getDiagnosis())
                 .treatmentSuggestions(petMedicalRequestDto.getTreatmentSuggestions())
                 .validateTill(petMedicalRequestDto.getValidateTill())
+                .visitDate(LocalDate.now())
                 .build();
         //redundant code make
         owner.getPets().stream()

@@ -15,6 +15,7 @@ public class PetMedicalRespnseDto {
     private List<PrescriptionDTO> prescriptions;
     private String treatmentSuggestions;
     private LocalDate validateTill;
+    private LocalDate visitDate;
 
 }
 

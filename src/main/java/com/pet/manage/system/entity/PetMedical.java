@@ -17,7 +17,7 @@ public class PetMedical {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long petMedicalId;
-
+    private LocalDate visitDate;
     private String allergies;
     private String diagnosis;
     private String treatmentSuggestions;
