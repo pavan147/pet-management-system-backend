@@ -3,6 +3,7 @@ package com.pet.manage.system.service;
 import com.pet.manage.system.dtos.*;
 import com.pet.manage.system.dtos.request.AppointmentRequestDTO;
 import com.pet.manage.system.dtos.response.AppointmentResponseDTO;
+import com.pet.manage.system.dtos.response.PetDashboardDTO;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -25,4 +26,6 @@ public interface PetService {
     AppointmentResponseDTO updateStatus(Long id, String status, String action);
 
     boolean isOwnerRegistered(String email);
+
+    PetDashboardDTO getDashboardData();
 }

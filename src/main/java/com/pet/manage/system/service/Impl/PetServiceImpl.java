@@ -4,6 +4,7 @@ import com.pet.manage.system.Utils;
 import com.pet.manage.system.dtos.*;
 import com.pet.manage.system.dtos.request.AppointmentRequestDTO;
 import com.pet.manage.system.dtos.response.AppointmentResponseDTO;
+import com.pet.manage.system.dtos.response.PetDashboardDTO;
 import com.pet.manage.system.entity.*;
 import com.pet.manage.system.global.exception.DuplicateAppointmentException;
 import com.pet.manage.system.repository.*;
@@ -12,6 +13,9 @@ import com.pet.manage.system.service.PetService;
 import org.modelmapper.ModelMapper;
 import org.modelmapper.TypeToken;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -198,5 +202,63 @@ public class PetServiceImpl implements PetService {
     @Override
     public boolean isOwnerRegistered(String email) {
         return ownerRepository.existsByEmail(email);
+    }
+
+    @Override
+    public PetDashboardDTO getDashboardData() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        String email = userDetails.getUsername();
+
+        Owner owner = ownerRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Owner not found"));
+
+        // Get pets
+        List<PetResponseDto> petDtos = owner.getPets().stream()
+                .map(pet -> Utils.mapPetToResponseDto(pet, modelMapper))
+                .collect(Collectors.toList());
+
+        // Map owner to DTO using the same pet mapping used by dashboard pets
+        OwnerResponseDto ownerDto = modelMapper.map(owner, OwnerResponseDto.class);
+        ownerDto.setPets(petDtos);
+
+        // Get pet ids
+        List<Long> petIds = owner.getPets().stream()
+                .map(Pet::getId)
+                .collect(Collectors.toList());
+
+        // Get vaccinations
+        List<PetVaccinationRecord> vaccinationRecords = vaccinationRecordRepository.findByPetIdIn(petIds);
+        List<PetVaccinationRecorResponsedDTO> vaccinationDtos = vaccinationRecords.stream()
+                .map(record -> {
+                    PetVaccinationRecorResponsedDTO dto = modelMapper.map(record, PetVaccinationRecorResponsedDTO.class);
+                    dto.setOwnerContact(record.getPet().getOwner().getPhoneNumber());
+                    return dto;
+                })
+                .collect(Collectors.toList());
+
+        // Get medical records
+        List<PetMedical> medicalRecords = petMedicalRepository.findByPetIdIn(petIds);
+        List<PetMedicalRespnseDto> medicalDtos = medicalRecords.stream()
+                .map(record -> {
+                    PetMedicalRespnseDto dto = modelMapper.map(record, PetMedicalRespnseDto.class);
+                    dto.setOwnerContact(record.getPet().getOwner().getPhoneNumber());
+                    return dto;
+                })
+                .collect(Collectors.toList());
+
+        // Get appointments
+        List<Appointment> appointments = appointmentRepository.findByEmail(email);
+        List<AppointmentResponseDTO> appointmentDtos = appointments.stream()
+                .map(appointment -> modelMapper.map(appointment, AppointmentResponseDTO.class))
+                .collect(Collectors.toList());
+
+        return PetDashboardDTO.builder()
+                .owner(ownerDto)
+                .pets(petDtos)
+                .vaccinations(vaccinationDtos)
+                .medicalRecords(medicalDtos)
+                .appointments(appointmentDtos)
+                .build();
     }
 }

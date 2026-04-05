@@ -5,6 +5,7 @@ import com.pet.manage.system.Utils;
 import com.pet.manage.system.dtos.*;
 import com.pet.manage.system.dtos.request.AppointmentRequestDTO;
 import com.pet.manage.system.dtos.response.AppointmentResponseDTO;
+import com.pet.manage.system.dtos.response.PetDashboardDTO;
 import com.pet.manage.system.service.PetService;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Valid;
@@ -91,5 +92,11 @@ public class PetController {
     @GetMapping("/owner/check")
     public boolean isOwnerRegistered(@RequestParam String email) {
         return petService.isOwnerRegistered(email);
+    }
+
+    @GetMapping("/dashboard")
+    public ResponseEntity<PetDashboardDTO> getDashboard() {
+        PetDashboardDTO dashboard = petService.getDashboardData();
+        return ResponseEntity.ok(dashboard);
     }
 }

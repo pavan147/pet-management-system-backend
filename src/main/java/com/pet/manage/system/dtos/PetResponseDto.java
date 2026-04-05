@@ -13,4 +13,6 @@ public class PetResponseDto {
     private String otherPetType;
     private String breed;
     private LocalDate registrationDate;
+    private String photoBase64;
+    private String photoContentType;
 }

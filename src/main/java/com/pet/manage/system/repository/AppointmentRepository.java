@@ -18,4 +18,6 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
     Optional<Appointment> findByEmailAndNameAndPhoneAndDate(String email, String name, String phone, String date);
 
     List<Appointment> findByDate(String date);
+
+    List<Appointment> findByEmail(String email);
 }
