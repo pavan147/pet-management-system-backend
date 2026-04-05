@@ -23,4 +23,6 @@ public interface PetService {
     List<AppointmentResponseDTO> getAppointmentsByDate(String date);
 
     AppointmentResponseDTO updateStatus(Long id, String status, String action);
+
+    boolean isOwnerRegistered(String email);
 }

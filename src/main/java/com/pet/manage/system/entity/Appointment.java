@@ -21,4 +21,5 @@ public class Appointment {
 
     private String status; // waiting, checked-in, pending
     private String action; // check-in, not-present, recall, etc.
+    private String address;
 }

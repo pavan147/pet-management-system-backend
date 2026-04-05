@@ -83,8 +83,13 @@ public class PetController {
 
     // Update status and action
     @PutMapping("/appointments/{id}/status")
-    public AppointmentResponseDTO updateStatus(@PathVariable Long id, @RequestBody StatusUpdateRequest request
-    ) {
+    public AppointmentResponseDTO updateStatus(@PathVariable Long id, @RequestBody StatusUpdateRequest request) {
         return petService.updateStatus(id, request.getStatus(), request.getAction());
+    }
+
+    // Check if owner is registered
+    @GetMapping("/owner/check")
+    public boolean isOwnerRegistered(@RequestParam String email) {
+        return petService.isOwnerRegistered(email);
     }
 }

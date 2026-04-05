@@ -146,6 +146,7 @@ public class PetServiceImpl implements PetService {
         }
 
         Appointment appointment = modelMapper.map(appointmentRequestDTO, Appointment.class);
+        appointment.setStatus("waiting");
 
         Appointment saveAppointment = appointmentRepository.save(appointment);
 
@@ -190,5 +191,10 @@ public class PetServiceImpl implements PetService {
         }
 
         return modelMapper.map(appt, AppointmentResponseDTO.class);
+    }
+
+    @Override
+    public boolean isOwnerRegistered(String email) {
+        return ownerRepository.existsByEmail(email);
     }
 }

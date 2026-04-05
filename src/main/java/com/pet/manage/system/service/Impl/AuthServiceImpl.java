@@ -16,6 +16,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -76,19 +77,23 @@ public class AuthServiceImpl implements AuthService {
         String token = jwtTokenProvider.generateToken(authentication);
         Optional<Owner> byUsernameOrEmail = userRepository.findByEmail(loginDto.getUsernameOrEmail());
           String role = null;
+        Owner loggUser = null;
          if(byUsernameOrEmail.isPresent()){
-             Owner loggUser = byUsernameOrEmail.get();
+               loggUser = byUsernameOrEmail.get();
              Optional<Role> roleOptional = loggUser.getRoles().stream().findFirst();
              if(roleOptional.isPresent()){
                  Role userRole = roleOptional.get();
                  role = userRole.getName();
              }
+         }else {
+             throw new UsernameNotFoundException("User with email " + loginDto.getUsernameOrEmail() + " not found");
          }
-         JwtAuthResponse jwtAuthResponse = new JwtAuthResponse();
-        jwtAuthResponse.setRole(role);
-        jwtAuthResponse.setAccessToken(token);
 
-        return jwtAuthResponse;
+        return JwtAuthResponse.builder()
+                .accessToken(token)
+                .role(role)
+                .name(loggUser.getOwnerName())
+                .build();
     }
 
 

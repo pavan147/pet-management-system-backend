@@ -9,3 +9,9 @@ postman request POST 'localhost:8080/api/auth/login' \
 "password": "test"
 
 }'
+
+
+--------ROLES-----------
+1	ROLE_ADMIN
+2	ROLE_PET_OWNER
+	

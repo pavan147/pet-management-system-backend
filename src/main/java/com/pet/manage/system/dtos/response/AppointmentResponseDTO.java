@@ -12,6 +12,7 @@ public class AppointmentResponseDTO {
     private String date; // Format: dd/MM/yyyy
     private String time;
     private String reason;
+    private String address;
 
     private String status; // waiting, checked-in, pending
     private String action;
