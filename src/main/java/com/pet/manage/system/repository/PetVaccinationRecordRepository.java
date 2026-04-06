@@ -10,4 +10,6 @@ import java.util.List;
 public interface PetVaccinationRecordRepository extends JpaRepository<PetVaccinationRecord, Long> {
 
     List<PetVaccinationRecord> findByPetIdIn(List<Long> petIds);
+
+    List<PetVaccinationRecord> findByPetIdOrderByVaccinationDateDesc(Long petId);
 }

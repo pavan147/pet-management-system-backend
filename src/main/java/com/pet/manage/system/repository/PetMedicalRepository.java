@@ -12,6 +12,8 @@ public interface PetMedicalRepository extends JpaRepository<PetMedical, Long> {
 
     List<PetMedical> findByPetIdIn(List<Long> petIds);
 
+    List<PetMedical> findByPetIdOrderByVisitDateDesc(Long petId);
+
     @Query("""
             select distinct pm
             from PetMedical pm

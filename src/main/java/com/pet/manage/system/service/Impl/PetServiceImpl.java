@@ -10,25 +10,34 @@ import com.pet.manage.system.global.exception.DuplicateAppointmentException;
 import com.pet.manage.system.repository.*;
 import com.pet.manage.system.service.HelperUtilService;
 import com.pet.manage.system.service.PetService;
+import com.pet.manage.system.service.TelegramNotificationService;
 import org.modelmapper.ModelMapper;
 import org.modelmapper.TypeToken;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 public class PetServiceImpl implements PetService {
+
+    private static final long MAX_IMAGE_SIZE_BYTES = 5L * 1024 * 1024;
+    private static final Set<String> ALLOWED_IMAGE_TYPES = Set.of("image/jpeg", "image/png");
 
     @Autowired
     private OwnerRepository ownerRepository;
@@ -47,6 +56,15 @@ public class PetServiceImpl implements PetService {
 
     @Autowired
     private AppointmentRepository appointmentRepository;
+
+    @Autowired
+    private PetMedicalChatMessageRepository petMedicalChatMessageRepository;
+
+    @Autowired
+    private PetMedicalChatImageRepository petMedicalChatImageRepository;
+
+    @Autowired
+    private TelegramNotificationService telegramNotificationService;
 
     @Autowired
     private ModelMapper modelMapper;
@@ -281,5 +299,357 @@ public class PetServiceImpl implements PetService {
         PetMedical record = petMedicalRepository.findForPdfByPetIdAndMedicalId(petId, petMedicalId)
                 .orElseThrow(() -> new RuntimeException("Medical record not found for provided petId and petMedicalId"));
         return helperUtilService.generatePrescriptionPdf(record);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MedicalChatThreadResponseDto getMedicalChatThread(Long petId) {
+        Pet pet = petRepository.findById(petId)
+                .orElseThrow(() -> new RuntimeException("Pet not found for id: " + petId));
+        Owner actor = getCurrentOwner();
+        enforceConversationAccess(pet, actor);
+
+        List<MedicalChatMessageResponseDto> messages = petMedicalChatMessageRepository
+                .findByPetIdOrderByCreatedAtAsc(petId)
+                .stream()
+                .map(this::mapMessage)
+                .collect(Collectors.toList());
+
+        return MedicalChatThreadResponseDto.builder()
+                .petId(pet.getId())
+                .petName(pet.getPetName())
+                .ownerId(pet.getOwner().getId())
+                .ownerName(pet.getOwner().getOwnerName())
+                .assignedVetId(pet.getAssignedVet() != null ? pet.getAssignedVet().getId() : null)
+                .assignedVetName(pet.getAssignedVet() != null ? pet.getAssignedVet().getOwnerName() : null)
+                .petContext(mapPetContext(pet))
+                .vaccinationRecords(getVaccinationRecordsForPet(petId, false))
+                .dewormingRecords(getVaccinationRecordsForPet(petId, true))
+                .medicalRecords(getMedicalRecordsForPet(petId))
+                .messages(messages)
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MedicalChatPetSearchResponseDto> searchMedicalChatPets(String query) {
+        Owner actor = getCurrentOwner();
+        if (!isAdmin(actor) && !hasRole(actor, "ROLE_DOCTOR")) {
+            throw new AccessDeniedException("Only doctor or admin can search medical chat pets.");
+        }
+
+        return petRepository.searchPetsWithMedicalChat(query == null ? null : query.trim())
+                .stream()
+                .map(this::mapMedicalChatPetSearch)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public MedicalChatMessageResponseDto sendMedicalChatMessage(Long petId, MedicalChatMessageRequestDto requestDto) {
+        Pet pet = petRepository.findById(petId)
+                .orElseThrow(() -> new RuntimeException("Pet not found for id: " + petId));
+        Owner actor = getCurrentOwner();
+        enforceConversationAccess(pet, actor);
+
+        String safeMessage = requestDto.getMessage() == null ? "" : requestDto.getMessage().trim();
+        if (safeMessage.isBlank() && requestDto.getLinkedImageId() == null) {
+            throw new IllegalArgumentException("Message text or linked image is required.");
+        }
+
+        if (requestDto.getLinkedImageId() != null) {
+            PetMedicalChatImage image = petMedicalChatImageRepository.findById(requestDto.getLinkedImageId())
+                    .orElseThrow(() -> new RuntimeException("Linked image not found."));
+            if (!image.getPet().getId().equals(petId)) {
+                throw new IllegalArgumentException("Linked image does not belong to selected pet.");
+            }
+        }
+
+        PetMedicalChatMessage entity = PetMedicalChatMessage.builder()
+                .pet(pet)
+                .sender(actor)
+                .senderRole(resolvePrimaryRole(actor))
+                .message(safeMessage.isBlank() ? null : safeMessage)
+                .emergency(requestDto.isEmergency())
+                .linkedImageId(requestDto.getLinkedImageId())
+                .build();
+
+        PetMedicalChatMessage saved = petMedicalChatMessageRepository.save(entity);
+        if (saved.isEmergency()) {
+            sendEmergencyTelegramNotification(pet, saved, 0);
+        }
+        return mapMessage(saved);
+    }
+
+    @Override
+    @Transactional
+    public MedicalChatMessageResponseDto uploadMedicalChatImages(Long petId,
+                                                                 MultipartFile[] files,
+                                                                 String message,
+                                                                 boolean emergency) {
+        Pet pet = petRepository.findById(petId)
+                .orElseThrow(() -> new RuntimeException("Pet not found for id: " + petId));
+        Owner actor = getCurrentOwner();
+
+        if (!isAdmin(actor) && !pet.getOwner().getId().equals(actor.getId())) {
+            throw new AccessDeniedException("Only pet owner or admin can upload medical condition images.");
+        }
+
+        if (files == null || files.length == 0) {
+            throw new IllegalArgumentException("At least one image is required.");
+        }
+
+        if (files.length > 10) {
+            throw new IllegalArgumentException("You can upload up to 10 images per request.");
+        }
+
+        validateImageFiles(files);
+
+        PetMedicalChatMessage chatMessage = PetMedicalChatMessage.builder()
+                .pet(pet)
+                .sender(actor)
+                .senderRole(resolvePrimaryRole(actor))
+                .message(message == null || message.trim().isBlank() ? null : message.trim())
+                .emergency(emergency)
+                .build();
+
+        PetMedicalChatMessage savedMessage = petMedicalChatMessageRepository.save(chatMessage);
+
+        List<PetMedicalChatImage> images = Arrays.stream(files)
+                .map(file -> toImageEntity(file, pet, actor, savedMessage))
+                .collect(Collectors.toList());
+
+        savedMessage.setImages(images);
+        PetMedicalChatMessage updated = petMedicalChatMessageRepository.save(savedMessage);
+
+        if (emergency) {
+            sendEmergencyTelegramNotification(pet, updated, images.size());
+        }
+
+        return mapMessage(updated);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] getMedicalChatImage(Long imageId) {
+        PetMedicalChatImage image = petMedicalChatImageRepository.findById(imageId)
+                .orElseThrow(() -> new RuntimeException("Image not found for id: " + imageId));
+        enforceConversationAccess(image.getPet(), getCurrentOwner());
+        return image.getImageData();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String getMedicalChatImageContentType(Long imageId) {
+        PetMedicalChatImage image = petMedicalChatImageRepository.findById(imageId)
+                .orElseThrow(() -> new RuntimeException("Image not found for id: " + imageId));
+        enforceConversationAccess(image.getPet(), getCurrentOwner());
+        return image.getContentType();
+    }
+
+    @Override
+    @Transactional
+    public void assignVetToPet(Long petId, Long vetId) {
+        Pet pet = petRepository.findById(petId)
+                .orElseThrow(() -> new RuntimeException("Pet not found for id: " + petId));
+        Owner vet = ownerRepository.findById(vetId)
+                .orElseThrow(() -> new RuntimeException("Vet user not found for id: " + vetId));
+
+        boolean doctorRolePresent = vet.getRoles().stream()
+                .anyMatch(role -> "ROLE_DOCTOR".equals(role.getName()));
+        if (!doctorRolePresent) {
+            throw new IllegalArgumentException("Selected user is not a doctor.");
+        }
+
+        pet.setAssignedVet(vet);
+        petRepository.save(pet);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MedicalChatMessageResponseDto> getEmergencyMedicalChatFeed() {
+        Owner actor = getCurrentOwner();
+        boolean admin = isAdmin(actor);
+        boolean doctor = hasRole(actor, "ROLE_DOCTOR");
+        if (!admin && !doctor) {
+            throw new AccessDeniedException("Only doctor or admin can access emergency feed.");
+        }
+
+        return petMedicalChatMessageRepository.findTop20ByEmergencyTrueOrderByCreatedAtDesc()
+                .stream()
+                .map(this::mapMessage)
+                .collect(Collectors.toList());
+    }
+
+    private void enforceConversationAccess(Pet pet, Owner actor) {
+        boolean owner = pet.getOwner() != null && pet.getOwner().getId().equals(actor.getId());
+        boolean doctor = hasRole(actor, "ROLE_DOCTOR");
+        if (!owner && !doctor && !isAdmin(actor)) {
+            throw new AccessDeniedException("You are not allowed to access this pet conversation.");
+        }
+    }
+
+    private Owner getCurrentOwner() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        return ownerRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new RuntimeException("Logged-in user was not found"));
+    }
+
+    private boolean isAdmin(Owner owner) {
+        return hasRole(owner, "ROLE_ADMIN");
+    }
+
+    private boolean hasRole(Owner owner, String roleName) {
+        return owner.getRoles() != null && owner.getRoles().stream().anyMatch(role -> roleName.equals(role.getName()));
+    }
+
+    private String resolvePrimaryRole(Owner owner) {
+        return owner.getRoles().stream().findFirst().map(Role::getName).orElse("ROLE_PET_OWNER");
+    }
+
+    private void validateImageFiles(MultipartFile[] files) {
+        for (MultipartFile file : files) {
+            if (file == null || file.isEmpty()) {
+                throw new IllegalArgumentException("Empty files are not allowed.");
+            }
+            if (file.getSize() > MAX_IMAGE_SIZE_BYTES) {
+                throw new IllegalArgumentException("Each image must be <= 5MB.");
+            }
+            String contentType = file.getContentType();
+            if (contentType == null || !ALLOWED_IMAGE_TYPES.contains(contentType.toLowerCase())) {
+                throw new IllegalArgumentException("Only JPG and PNG images are allowed.");
+            }
+        }
+    }
+
+    private PetMedicalChatImage toImageEntity(MultipartFile file, Pet pet, Owner actor, PetMedicalChatMessage chatMessage) {
+        try {
+            return PetMedicalChatImage.builder()
+                    .chatMessage(chatMessage)
+                    .pet(pet)
+                    .sender(actor)
+                    .fileName(file.getOriginalFilename() == null ? "medical-image" : file.getOriginalFilename())
+                    .contentType(file.getContentType())
+                    .sizeBytes(file.getSize())
+                    .imageData(file.getBytes())
+                    .build();
+        } catch (IOException ex) {
+            throw new RuntimeException("Failed to read uploaded image", ex);
+        }
+    }
+
+    private MedicalChatMessageResponseDto mapMessage(PetMedicalChatMessage message) {
+        List<MedicalChatImageResponseDto> images = message.getImages().stream()
+                .sorted(Comparator.comparing(PetMedicalChatImage::getUploadedAt))
+                .map(this::mapImage)
+                .collect(Collectors.toList());
+
+        return MedicalChatMessageResponseDto.builder()
+                .id(message.getId())
+                .petId(message.getPet().getId())
+                .senderName(message.getSender().getOwnerName())
+                .senderRole(message.getSenderRole())
+                .message(message.getMessage())
+                .emergency(message.isEmergency())
+                .linkedImageId(message.getLinkedImageId())
+                .createdAt(message.getCreatedAt())
+                .images(images)
+                .build();
+    }
+
+    private MedicalChatImageResponseDto mapImage(PetMedicalChatImage image) {
+        return MedicalChatImageResponseDto.builder()
+                .id(image.getId())
+                .petId(image.getPet().getId())
+                .fileName(image.getFileName())
+                .contentType(image.getContentType())
+                .sizeBytes(image.getSizeBytes())
+                .senderName(image.getSender().getOwnerName())
+                .senderRole(resolvePrimaryRole(image.getSender()))
+                .uploadedAt(image.getUploadedAt())
+                .imageUrl("/api/pets/medical-chat/images/" + image.getId())
+                .build();
+    }
+
+    private MedicalChatPetContextDto mapPetContext(Pet pet) {
+        return MedicalChatPetContextDto.builder()
+                .id(pet.getId())
+                .petName(pet.getPetName())
+                .petType(pet.getPetType())
+                .breed(pet.getBreed())
+                .gender(pet.getGender())
+                .dob(pet.getDob())
+                .registrationDate(pet.getRegistrationDate())
+                .description(pet.getDescription())
+                .allergies(pet.getAllergies())
+                .photoBase64(pet.getPhoto() != null && pet.getPhoto().length > 0
+                        ? Base64.getEncoder().encodeToString(pet.getPhoto())
+                        : null)
+                .photoContentType(pet.getPhotoContentType())
+                .ownerName(pet.getOwner() != null ? pet.getOwner().getOwnerName() : null)
+                .ownerEmail(pet.getOwner() != null ? pet.getOwner().getEmail() : null)
+                .ownerPhoneNumber(pet.getOwner() != null ? pet.getOwner().getPhoneNumber() : null)
+                .assignedVetName(pet.getAssignedVet() != null ? pet.getAssignedVet().getOwnerName() : null)
+                .build();
+    }
+
+    private List<PetVaccinationRecorResponsedDTO> getVaccinationRecordsForPet(Long petId, boolean dewormingOnly) {
+        return vaccinationRecordRepository.findByPetIdOrderByVaccinationDateDesc(petId)
+                .stream()
+                .filter(record -> dewormingOnly == isDewormingRecord(record))
+                .map(record -> {
+                    PetVaccinationRecorResponsedDTO dto = modelMapper.map(record, PetVaccinationRecorResponsedDTO.class);
+                    dto.setPetId(record.getPet().getId());
+                    dto.setOwnerContact(record.getPet().getOwner().getPhoneNumber());
+                    return dto;
+                })
+                .collect(Collectors.toList());
+    }
+
+    private List<PetMedicalRespnseDto> getMedicalRecordsForPet(Long petId) {
+        return petMedicalRepository.findByPetIdOrderByVisitDateDesc(petId)
+                .stream()
+                .map(record -> {
+                    PetMedicalRespnseDto dto = modelMapper.map(record, PetMedicalRespnseDto.class);
+                    dto.setPetMedicalId(record.getPetMedicalId());
+                    dto.setPetId(record.getPet().getId());
+                    dto.setOwnerContact(record.getPet().getOwner().getPhoneNumber());
+                    return dto;
+                })
+                .collect(Collectors.toList());
+    }
+
+    private boolean isDewormingRecord(PetVaccinationRecord record) {
+        String name = ((record.getVaccination() == null ? "" : record.getVaccination()) + " "
+                + (record.getVaccineName() == null ? "" : record.getVaccineName())).toLowerCase();
+        return name.contains("deworm");
+    }
+
+    private MedicalChatPetSearchResponseDto mapMedicalChatPetSearch(Pet pet) {
+        Optional<PetMedicalChatMessage> latestMessageOptional = petMedicalChatMessageRepository.findTopByPetIdOrderByCreatedAtDesc(pet.getId());
+        return MedicalChatPetSearchResponseDto.builder()
+                .petId(pet.getId())
+                .petName(pet.getPetName())
+                .petType(pet.getPetType())
+                .breed(pet.getBreed())
+                .ownerName(pet.getOwner() != null ? pet.getOwner().getOwnerName() : null)
+                .ownerPhoneNumber(pet.getOwner() != null ? pet.getOwner().getPhoneNumber() : null)
+                .assignedVetName(pet.getAssignedVet() != null ? pet.getAssignedVet().getOwnerName() : null)
+                .latestMessageAt(latestMessageOptional.map(PetMedicalChatMessage::getCreatedAt).orElse(null))
+                .latestMessage(latestMessageOptional.map(PetMedicalChatMessage::getMessage).orElse(null))
+                .emergency(petMedicalChatMessageRepository.existsByPetIdAndEmergencyTrue(pet.getId()))
+                .build();
+    }
+
+    private void sendEmergencyTelegramNotification(Pet pet, PetMedicalChatMessage message, int imageCount) {
+        String notification = "EMERGENCY PET CASE\n"
+                + "Pet: " + pet.getPetName() + " (ID: " + pet.getId() + ")\n"
+                + "Owner: " + pet.getOwner().getOwnerName() + "\n"
+                + "Sender: " + message.getSender().getOwnerName() + " (" + message.getSenderRole() + ")\n"
+                + "Images: " + imageCount + "\n"
+                + "Message: " + (message.getMessage() == null ? "(no text)" : message.getMessage()) + "\n"
+                + "Chat: /pet-medical-chat/" + pet.getId();
+        telegramNotificationService.sendMessage(notification);
     }
 }

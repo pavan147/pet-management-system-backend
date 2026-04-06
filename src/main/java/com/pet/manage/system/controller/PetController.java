@@ -15,6 +15,7 @@ import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -116,5 +117,66 @@ public class PetController {
                         ContentDisposition.attachment().filename(fileName).build().toString())
                 .contentType(MediaType.APPLICATION_PDF)
                 .body(pdfBytes);
+    }
+
+    @GetMapping("/medical-chat/{petId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER','ROLE_DOCTOR')")
+    public ResponseEntity<MedicalChatThreadResponseDto> getMedicalChatThread(@PathVariable Long petId) {
+        return ResponseEntity.ok(petService.getMedicalChatThread(petId));
+    }
+
+    @GetMapping("/medical-chat/search")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_DOCTOR')")
+    public ResponseEntity<List<MedicalChatPetSearchResponseDto>> searchMedicalChatPets(
+            @RequestParam(required = false) String query
+    ) {
+        return ResponseEntity.ok(petService.searchMedicalChatPets(query));
+    }
+
+    @PostMapping("/medical-chat/{petId}/messages")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER','ROLE_DOCTOR')")
+    public ResponseEntity<MedicalChatMessageResponseDto> sendMedicalChatMessage(
+            @PathVariable Long petId,
+            @RequestBody MedicalChatMessageRequestDto requestDto
+    ) {
+        return ResponseEntity.ok(petService.sendMedicalChatMessage(petId, requestDto));
+    }
+
+    @PostMapping(value = "/medical-chat/{petId}/images", consumes = {"multipart/form-data"})
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER')")
+    public ResponseEntity<MedicalChatMessageResponseDto> uploadMedicalChatImages(
+            @PathVariable Long petId,
+            @RequestPart("files") MultipartFile[] files,
+            @RequestPart(value = "message", required = false) String message,
+            @RequestPart(value = "emergency", required = false) String emergency
+    ) {
+        boolean emergencyFlag = Boolean.parseBoolean(emergency);
+        return ResponseEntity.ok(petService.uploadMedicalChatImages(petId, files, message, emergencyFlag));
+    }
+
+    @GetMapping("/medical-chat/images/{imageId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER','ROLE_DOCTOR')")
+    public ResponseEntity<byte[]> getMedicalChatImage(@PathVariable Long imageId) {
+        byte[] data = petService.getMedicalChatImage(imageId);
+        String contentType = petService.getMedicalChatImageContentType(imageId);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.inline().filename("pet_medical_chat_" + imageId).build().toString())
+                .contentType(MediaType.parseMediaType(contentType))
+                .body(data);
+    }
+
+    @PutMapping("/{petId}/assign-vet/{vetId}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<Void> assignVetToPet(@PathVariable Long petId, @PathVariable Long vetId) {
+        petService.assignVetToPet(petId, vetId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/medical-chat/emergency-feed")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_DOCTOR')")
+    public ResponseEntity<List<MedicalChatMessageResponseDto>> getEmergencyFeed() {
+        return ResponseEntity.ok(petService.getEmergencyMedicalChatFeed());
     }
 }

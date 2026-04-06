@@ -34,6 +34,10 @@ public class Pet {
     @JoinColumn(name = "owner_id")
     private Owner owner;
 
+    @ManyToOne
+    @JoinColumn(name = "assigned_vet_id")
+    private Owner assignedVet;
+
     @OneToMany(mappedBy = "pet", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PetVaccinationRecord> vaccinationRecords = new ArrayList<>();
 

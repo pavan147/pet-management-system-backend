@@ -30,4 +30,23 @@ public interface PetService {
     PetDashboardDTO getDashboardData();
 
     byte[] downloadPrescriptionPdf(Long petId, Long petMedicalId);
+
+    MedicalChatThreadResponseDto getMedicalChatThread(Long petId);
+
+    List<MedicalChatPetSearchResponseDto> searchMedicalChatPets(String query);
+
+    MedicalChatMessageResponseDto sendMedicalChatMessage(Long petId, MedicalChatMessageRequestDto requestDto);
+
+    MedicalChatMessageResponseDto uploadMedicalChatImages(Long petId,
+                                                          MultipartFile[] files,
+                                                          String message,
+                                                          boolean emergency);
+
+    byte[] getMedicalChatImage(Long imageId);
+
+    String getMedicalChatImageContentType(Long imageId);
+
+    void assignVetToPet(Long petId, Long vetId);
+
+    List<MedicalChatMessageResponseDto> getEmergencyMedicalChatFeed();
 }
