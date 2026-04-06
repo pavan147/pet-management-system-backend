@@ -225,6 +225,7 @@ public class PetServiceImpl implements PetService {
         // Map owner to DTO using the same pet mapping used by dashboard pets
         OwnerResponseDto ownerDto = modelMapper.map(owner, OwnerResponseDto.class);
         ownerDto.setPets(petDtos);
+        ownerDto.setPhoneVerified(Boolean.TRUE.equals(owner.getPhoneVerified()));
 
         // Get pet ids
         List<Long> petIds = owner.getPets().stream()

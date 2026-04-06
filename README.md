@@ -16,6 +16,9 @@ postman request POST 'localhost:8080/api/auth/login' \
 2	ROLE_PET_OWNER
 3	ROLE_RECEPTIONIST
 4	ROLE_DOCTOR
+
+Pet community feature documentation:
+- `PET_COMMUNITY_SOCIAL_FEATURE.md`
 	
 	
 	
