@@ -31,7 +31,11 @@ public class OtpController {
     @PostMapping("/verify")
     public ResponseEntity<Map<String, Object>> verifyOtp(@Valid @RequestBody VerifyOtpRequestDTO request) {
         boolean verified = otpService.verifyOtp(request.getPhoneNumber(), request.getOtp());
-        return ResponseEntity.ok(Map.of("verified", verified));
+        return ResponseEntity.ok(Map.of(
+                "verified", verified,
+                "phoneVerified", verified,
+                "message", verified ? "OTP verified successfully" : "Invalid or expired OTP"
+        ));
     }
 }
 

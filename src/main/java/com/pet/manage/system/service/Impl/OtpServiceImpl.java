@@ -53,7 +53,7 @@ public class OtpServiceImpl implements OtpService {
                 .orElseThrow(() -> new RuntimeException("Owner not found with phone number: " + phoneNumber));
 
         if (owner.getOtpCode() == null || owner.getOtpExpiresAt() == null) {
-            return false;
+            return Boolean.TRUE.equals(owner.getPhoneVerified());
         }
 
         if (LocalDateTime.now().isAfter(owner.getOtpExpiresAt())) {

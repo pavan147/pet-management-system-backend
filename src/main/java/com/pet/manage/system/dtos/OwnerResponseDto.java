@@ -13,5 +13,6 @@ public class OwnerResponseDto {
     private String phoneNumber;
     private String password;
     private String address;
+    private Boolean phoneVerified;
     private List<PetResponseDto> pets; //
 }
