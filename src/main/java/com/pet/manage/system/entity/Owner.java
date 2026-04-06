@@ -1,8 +1,9 @@
 package com.pet.manage.system.entity;
 
 import jakarta.persistence.*;
-        import lombok.Data;
+import lombok.Data;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -21,6 +22,11 @@ public class Owner {
     private String phoneNumber;
     private String password;
     private String address;
+
+    // Minimal OTP state stored on owner record
+    private String otpCode;
+    private LocalDateTime otpExpiresAt;
+    private Boolean phoneVerified = false;
 
     @OneToMany(mappedBy = "owner", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Pet> pets = new ArrayList<>();
