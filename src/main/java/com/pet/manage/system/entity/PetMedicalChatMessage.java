@@ -27,6 +27,10 @@ public class PetMedicalChatMessage {
     private Pet pet;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "thread_id")
+    private PetMedicalChatThread thread;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "sender_id", nullable = false)
     private Owner sender;
 

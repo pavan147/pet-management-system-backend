@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,6 +24,10 @@ public class Pet {
     private String description;
     private String gender;
     private String allergies;
+    private String medicalChatStatus;
+    private LocalDateTime medicalChatClosedAt;
+    private Long medicalChatClosedByUserId;
+    private String medicalChatClosedByName;
     @Lob
     @Column(name = "photo" , columnDefinition = "MEDIUMBLOB")
     private byte[] photo;

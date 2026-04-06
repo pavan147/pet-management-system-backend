@@ -9,10 +9,20 @@ public interface PetMedicalChatMessageRepository extends JpaRepository<PetMedica
 
     List<PetMedicalChatMessage> findByPetIdOrderByCreatedAtAsc(Long petId);
 
+    List<PetMedicalChatMessage> findByThreadIdOrderByCreatedAtAsc(Long threadId);
+
+    List<PetMedicalChatMessage> findByPetIdAndThreadIsNullOrderByCreatedAtAsc(Long petId);
+
     java.util.Optional<PetMedicalChatMessage> findTopByPetIdOrderByCreatedAtDesc(Long petId);
+
+    java.util.Optional<PetMedicalChatMessage> findTopByThreadIdOrderByCreatedAtDesc(Long threadId);
 
     boolean existsByPetIdAndEmergencyTrue(Long petId);
 
+    boolean existsByThreadIdAndEmergencyTrue(Long threadId);
+
     List<PetMedicalChatMessage> findTop20ByEmergencyTrueOrderByCreatedAtDesc();
+
+    long countByThreadId(Long threadId);
 }
 

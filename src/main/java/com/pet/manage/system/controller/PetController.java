@@ -128,9 +128,16 @@ public class PetController {
     @GetMapping("/medical-chat/search")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_DOCTOR')")
     public ResponseEntity<List<MedicalChatPetSearchResponseDto>> searchMedicalChatPets(
-            @RequestParam(required = false) String query
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false, defaultValue = "ACTIVE") String status
     ) {
-        return ResponseEntity.ok(petService.searchMedicalChatPets(query));
+        return ResponseEntity.ok(petService.searchMedicalChatPets(query, status));
+    }
+
+    @PutMapping("/medical-chat/{petId}/close")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER')")
+    public ResponseEntity<MedicalChatThreadResponseDto> closeMedicalChat(@PathVariable Long petId) {
+        return ResponseEntity.ok(petService.closeMedicalChat(petId));
     }
 
     @PostMapping("/medical-chat/{petId}/messages")
@@ -178,5 +185,56 @@ public class PetController {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_DOCTOR')")
     public ResponseEntity<List<MedicalChatMessageResponseDto>> getEmergencyFeed() {
         return ResponseEntity.ok(petService.getEmergencyMedicalChatFeed());
+    }
+
+    // ---- Thread-based endpoints ----
+
+    @GetMapping("/{petId}/medical-chat/threads")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER','ROLE_DOCTOR')")
+    public ResponseEntity<List<MedicalChatThreadSummaryDto>> getThreadsForPet(@PathVariable Long petId) {
+        return ResponseEntity.ok(petService.getThreadsForPet(petId));
+    }
+
+    @PostMapping("/{petId}/medical-chat/threads")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER','ROLE_DOCTOR')")
+    public ResponseEntity<MedicalChatThreadResponseDto> createThread(
+            @PathVariable Long petId,
+            @RequestBody(required = false) MedicalChatThreadCreateRequestDto requestDto
+    ) {
+        String title = requestDto != null ? requestDto.getTitle() : null;
+        return ResponseEntity.ok(petService.createThread(petId, title));
+    }
+
+    @GetMapping("/medical-chat/threads/{threadId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER','ROLE_DOCTOR')")
+    public ResponseEntity<MedicalChatThreadResponseDto> getThread(@PathVariable Long threadId) {
+        return ResponseEntity.ok(petService.getThreadById(threadId));
+    }
+
+    @PostMapping("/medical-chat/threads/{threadId}/messages")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER','ROLE_DOCTOR')")
+    public ResponseEntity<MedicalChatMessageResponseDto> sendMessageToThread(
+            @PathVariable Long threadId,
+            @RequestBody MedicalChatMessageRequestDto requestDto
+    ) {
+        return ResponseEntity.ok(petService.sendMessageToThread(threadId, requestDto));
+    }
+
+    @PostMapping(value = "/medical-chat/threads/{threadId}/images", consumes = {"multipart/form-data"})
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER')")
+    public ResponseEntity<MedicalChatMessageResponseDto> uploadImagesToThread(
+            @PathVariable Long threadId,
+            @RequestPart("files") MultipartFile[] files,
+            @RequestPart(value = "message", required = false) String message,
+            @RequestPart(value = "emergency", required = false) String emergency
+    ) {
+        boolean emergencyFlag = Boolean.parseBoolean(emergency);
+        return ResponseEntity.ok(petService.uploadImagesToThread(threadId, files, message, emergencyFlag));
+    }
+
+    @PutMapping("/medical-chat/threads/{threadId}/close")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER')")
+    public ResponseEntity<MedicalChatThreadResponseDto> closeThread(@PathVariable Long threadId) {
+        return ResponseEntity.ok(petService.closeThread(threadId));
     }
 }

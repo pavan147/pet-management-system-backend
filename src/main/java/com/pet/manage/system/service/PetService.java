@@ -33,7 +33,9 @@ public interface PetService {
 
     MedicalChatThreadResponseDto getMedicalChatThread(Long petId);
 
-    List<MedicalChatPetSearchResponseDto> searchMedicalChatPets(String query);
+    List<MedicalChatPetSearchResponseDto> searchMedicalChatPets(String query, String status);
+
+    MedicalChatThreadResponseDto closeMedicalChat(Long petId);
 
     MedicalChatMessageResponseDto sendMedicalChatMessage(Long petId, MedicalChatMessageRequestDto requestDto);
 
@@ -49,4 +51,21 @@ public interface PetService {
     void assignVetToPet(Long petId, Long vetId);
 
     List<MedicalChatMessageResponseDto> getEmergencyMedicalChatFeed();
+
+    // ---- Thread-based operations ----
+
+    List<MedicalChatThreadSummaryDto> getThreadsForPet(Long petId);
+
+    MedicalChatThreadResponseDto createThread(Long petId, String title);
+
+    MedicalChatThreadResponseDto getThreadById(Long threadId);
+
+    MedicalChatThreadResponseDto closeThread(Long threadId);
+
+    MedicalChatMessageResponseDto sendMessageToThread(Long threadId, MedicalChatMessageRequestDto requestDto);
+
+    MedicalChatMessageResponseDto uploadImagesToThread(Long threadId,
+                                                       MultipartFile[] files,
+                                                       String message,
+                                                       boolean emergency);
 }

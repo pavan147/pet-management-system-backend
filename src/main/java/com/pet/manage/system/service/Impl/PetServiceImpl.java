@@ -8,6 +8,7 @@ import com.pet.manage.system.dtos.response.PetDashboardDTO;
 import com.pet.manage.system.entity.*;
 import com.pet.manage.system.global.exception.DuplicateAppointmentException;
 import com.pet.manage.system.repository.*;
+import com.pet.manage.system.repository.PetMedicalChatThreadRepository;
 import com.pet.manage.system.service.HelperUtilService;
 import com.pet.manage.system.service.PetService;
 import com.pet.manage.system.service.TelegramNotificationService;
@@ -36,6 +37,8 @@ import java.util.stream.Collectors;
 @Service
 public class PetServiceImpl implements PetService {
 
+    private static final String CHAT_STATUS_ACTIVE = "ACTIVE";
+    private static final String CHAT_STATUS_CLOSED = "CLOSED";
     private static final long MAX_IMAGE_SIZE_BYTES = 5L * 1024 * 1024;
     private static final Set<String> ALLOWED_IMAGE_TYPES = Set.of("image/jpeg", "image/png");
 
@@ -62,6 +65,9 @@ public class PetServiceImpl implements PetService {
 
     @Autowired
     private PetMedicalChatImageRepository petMedicalChatImageRepository;
+
+    @Autowired
+    private PetMedicalChatThreadRepository petMedicalChatThreadRepository;
 
     @Autowired
     private TelegramNotificationService telegramNotificationService;
@@ -322,6 +328,11 @@ public class PetServiceImpl implements PetService {
                 .ownerName(pet.getOwner().getOwnerName())
                 .assignedVetId(pet.getAssignedVet() != null ? pet.getAssignedVet().getId() : null)
                 .assignedVetName(pet.getAssignedVet() != null ? pet.getAssignedVet().getOwnerName() : null)
+                .chatStatus(resolveChatStatus(pet))
+                .closedAt(pet.getMedicalChatClosedAt())
+                .closedByName(pet.getMedicalChatClosedByName())
+                .canClose(canCloseChat(pet, actor))
+                .canReply(canReplyToChat(pet, actor))
                 .petContext(mapPetContext(pet))
                 .vaccinationRecords(getVaccinationRecordsForPet(petId, false))
                 .dewormingRecords(getVaccinationRecordsForPet(petId, true))
@@ -332,7 +343,7 @@ public class PetServiceImpl implements PetService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<MedicalChatPetSearchResponseDto> searchMedicalChatPets(String query) {
+    public List<MedicalChatPetSearchResponseDto> searchMedicalChatPets(String query, String status) {
         Owner actor = getCurrentOwner();
         if (!isAdmin(actor) && !hasRole(actor, "ROLE_DOCTOR")) {
             throw new AccessDeniedException("Only doctor or admin can search medical chat pets.");
@@ -340,8 +351,42 @@ public class PetServiceImpl implements PetService {
 
         return petRepository.searchPetsWithMedicalChat(query == null ? null : query.trim())
                 .stream()
+                .filter(pet -> matchesStatusFilter(pet, status))
                 .map(this::mapMedicalChatPetSearch)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public MedicalChatThreadResponseDto closeMedicalChat(Long petId) {
+        Pet pet = petRepository.findById(petId)
+                .orElseThrow(() -> new RuntimeException("Pet not found for id: " + petId));
+        Owner actor = getCurrentOwner();
+
+        if (!canCloseChat(pet, actor)) {
+            throw new AccessDeniedException("Only the pet owner or admin can close this medical chat.");
+        }
+
+        if (isChatClosed(pet)) {
+            throw new IllegalArgumentException("This medical chat is already closed.");
+        }
+
+        pet.setMedicalChatStatus(CHAT_STATUS_CLOSED);
+        pet.setMedicalChatClosedAt(java.time.LocalDateTime.now());
+        pet.setMedicalChatClosedByUserId(actor.getId());
+        pet.setMedicalChatClosedByName(actor.getOwnerName());
+        petRepository.save(pet);
+
+        PetMedicalChatMessage systemMessage = PetMedicalChatMessage.builder()
+                .pet(pet)
+                .sender(actor)
+                .senderRole(resolvePrimaryRole(actor))
+                .message("Medical chat closed by " + actor.getOwnerName() + ". Issue resolved.")
+                .emergency(false)
+                .build();
+        petMedicalChatMessageRepository.save(systemMessage);
+
+        return getMedicalChatThread(petId);
     }
 
     @Override
@@ -351,6 +396,7 @@ public class PetServiceImpl implements PetService {
                 .orElseThrow(() -> new RuntimeException("Pet not found for id: " + petId));
         Owner actor = getCurrentOwner();
         enforceConversationAccess(pet, actor);
+        ensureChatOpenForReply(pet, actor);
 
         String safeMessage = requestDto.getMessage() == null ? "" : requestDto.getMessage().trim();
         if (safeMessage.isBlank() && requestDto.getLinkedImageId() == null) {
@@ -394,6 +440,7 @@ public class PetServiceImpl implements PetService {
         if (!isAdmin(actor) && !pet.getOwner().getId().equals(actor.getId())) {
             throw new AccessDeniedException("Only pet owner or admin can upload medical condition images.");
         }
+        ensureChatOpenForReply(pet, actor);
 
         if (files == null || files.length == 0) {
             throw new IllegalArgumentException("At least one image is required.");
@@ -481,11 +528,209 @@ public class PetServiceImpl implements PetService {
                 .collect(Collectors.toList());
     }
 
+    // ---- Thread-based operations ----
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MedicalChatThreadSummaryDto> getThreadsForPet(Long petId) {
+        Pet pet = petRepository.findById(petId)
+                .orElseThrow(() -> new RuntimeException("Pet not found for id: " + petId));
+        Owner actor = getCurrentOwner();
+        enforceConversationAccess(pet, actor);
+
+        return petMedicalChatThreadRepository.findByPetIdOrderByCreatedAtDesc(petId)
+                .stream()
+                .map(this::mapThreadSummary)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public MedicalChatThreadResponseDto createThread(Long petId, String title) {
+        Pet pet = petRepository.findById(petId)
+                .orElseThrow(() -> new RuntimeException("Pet not found for id: " + petId));
+        Owner actor = getCurrentOwner();
+        enforceConversationAccess(pet, actor);
+
+        String resolvedTitle = (title == null || title.isBlank())
+                ? "Medical Case - " + pet.getPetName()
+                : title.trim();
+
+        PetMedicalChatThread thread = PetMedicalChatThread.builder()
+                .pet(pet)
+                .title(resolvedTitle)
+                .status(CHAT_STATUS_ACTIVE)
+                .createdBy(actor)
+                .build();
+        petMedicalChatThreadRepository.save(thread);
+        return getThreadById(thread.getId());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MedicalChatThreadResponseDto getThreadById(Long threadId) {
+        PetMedicalChatThread thread = petMedicalChatThreadRepository.findById(threadId)
+                .orElseThrow(() -> new RuntimeException("Thread not found for id: " + threadId));
+        Owner actor = getCurrentOwner();
+        enforceConversationAccess(thread.getPet(), actor);
+
+        List<MedicalChatMessageResponseDto> messages = petMedicalChatMessageRepository
+                .findByThreadIdOrderByCreatedAtAsc(threadId)
+                .stream()
+                .map(this::mapMessage)
+                .collect(Collectors.toList());
+
+        Pet pet = thread.getPet();
+        Long petId = pet.getId();
+
+        return MedicalChatThreadResponseDto.builder()
+                .threadId(thread.getId())
+                .petId(petId)
+                .petName(pet.getPetName())
+                .ownerId(pet.getOwner().getId())
+                .ownerName(pet.getOwner().getOwnerName())
+                .assignedVetId(pet.getAssignedVet() != null ? pet.getAssignedVet().getId() : null)
+                .assignedVetName(pet.getAssignedVet() != null ? pet.getAssignedVet().getOwnerName() : null)
+                .chatStatus(thread.getStatus())
+                .closedAt(thread.getClosedAt())
+                .closedByName(thread.getClosedByName())
+                .canClose(canCloseThread(thread, actor))
+                .canReply(!isThreadClosed(thread) || isAdmin(actor))
+                .petContext(mapPetContext(pet))
+                .vaccinationRecords(getVaccinationRecordsForPet(petId, false))
+                .dewormingRecords(getVaccinationRecordsForPet(petId, true))
+                .medicalRecords(getMedicalRecordsForPet(petId))
+                .messages(messages)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public MedicalChatThreadResponseDto closeThread(Long threadId) {
+        PetMedicalChatThread thread = petMedicalChatThreadRepository.findById(threadId)
+                .orElseThrow(() -> new RuntimeException("Thread not found for id: " + threadId));
+        Owner actor = getCurrentOwner();
+
+        if (!canCloseThread(thread, actor)) {
+            throw new AccessDeniedException("Only the pet owner or admin can close this medical thread.");
+        }
+        if (isThreadClosed(thread)) {
+            throw new IllegalArgumentException("This medical thread is already closed.");
+        }
+
+        thread.setStatus(CHAT_STATUS_CLOSED);
+        thread.setClosedAt(java.time.LocalDateTime.now());
+        thread.setClosedByUserId(actor.getId());
+        thread.setClosedByName(actor.getOwnerName());
+        petMedicalChatThreadRepository.save(thread);
+
+        PetMedicalChatMessage systemMessage = PetMedicalChatMessage.builder()
+                .pet(thread.getPet())
+                .thread(thread)
+                .sender(actor)
+                .senderRole(resolvePrimaryRole(actor))
+                .message("Medical thread closed by " + actor.getOwnerName() + ". Issue resolved.")
+                .emergency(false)
+                .build();
+        petMedicalChatMessageRepository.save(systemMessage);
+
+        return getThreadById(threadId);
+    }
+
+    @Override
+    @Transactional
+    public MedicalChatMessageResponseDto sendMessageToThread(Long threadId, MedicalChatMessageRequestDto requestDto) {
+        PetMedicalChatThread thread = petMedicalChatThreadRepository.findById(threadId)
+                .orElseThrow(() -> new RuntimeException("Thread not found for id: " + threadId));
+        Owner actor = getCurrentOwner();
+        enforceConversationAccess(thread.getPet(), actor);
+
+        if (isThreadClosed(thread) && !isAdmin(actor)) {
+            throw new IllegalArgumentException("This thread is closed. You can view it in history but cannot add new messages.");
+        }
+
+        String safeMessage = requestDto.getMessage() == null ? "" : requestDto.getMessage().trim();
+        if (safeMessage.isBlank() && requestDto.getLinkedImageId() == null) {
+            throw new IllegalArgumentException("Message text or linked image is required.");
+        }
+
+        PetMedicalChatMessage entity = PetMedicalChatMessage.builder()
+                .pet(thread.getPet())
+                .thread(thread)
+                .sender(actor)
+                .senderRole(resolvePrimaryRole(actor))
+                .message(safeMessage.isBlank() ? null : safeMessage)
+                .emergency(requestDto.isEmergency())
+                .linkedImageId(requestDto.getLinkedImageId())
+                .build();
+
+        PetMedicalChatMessage saved = petMedicalChatMessageRepository.save(entity);
+        if (saved.isEmergency()) {
+            sendEmergencyTelegramNotification(thread.getPet(), saved, 0);
+        }
+        return mapMessage(saved);
+    }
+
+    @Override
+    @Transactional
+    public MedicalChatMessageResponseDto uploadImagesToThread(Long threadId,
+                                                               MultipartFile[] files,
+                                                               String message,
+                                                               boolean emergency) {
+        PetMedicalChatThread thread = petMedicalChatThreadRepository.findById(threadId)
+                .orElseThrow(() -> new RuntimeException("Thread not found for id: " + threadId));
+        Owner actor = getCurrentOwner();
+
+        if (!isAdmin(actor) && !thread.getPet().getOwner().getId().equals(actor.getId())) {
+            throw new AccessDeniedException("Only pet owner or admin can upload medical condition images.");
+        }
+        if (isThreadClosed(thread) && !isAdmin(actor)) {
+            throw new IllegalArgumentException("This thread is closed. Image uploads are disabled.");
+        }
+
+        if (files == null || files.length == 0) {
+            throw new IllegalArgumentException("At least one image is required.");
+        }
+        if (files.length > 10) {
+            throw new IllegalArgumentException("You can upload up to 10 images per request.");
+        }
+        validateImageFiles(files);
+
+        PetMedicalChatMessage chatMessage = PetMedicalChatMessage.builder()
+                .pet(thread.getPet())
+                .thread(thread)
+                .sender(actor)
+                .senderRole(resolvePrimaryRole(actor))
+                .message(message == null || message.trim().isBlank() ? null : message.trim())
+                .emergency(emergency)
+                .build();
+
+        PetMedicalChatMessage savedMessage = petMedicalChatMessageRepository.save(chatMessage);
+
+        List<PetMedicalChatImage> images = Arrays.stream(files)
+                .map(file -> toImageEntity(file, thread.getPet(), actor, savedMessage))
+                .collect(Collectors.toList());
+
+        savedMessage.setImages(images);
+        PetMedicalChatMessage updated = petMedicalChatMessageRepository.save(savedMessage);
+
+        if (emergency) {
+            sendEmergencyTelegramNotification(thread.getPet(), updated, images.size());
+        }
+        return mapMessage(updated);
+    }
+
     private void enforceConversationAccess(Pet pet, Owner actor) {
         boolean owner = pet.getOwner() != null && pet.getOwner().getId().equals(actor.getId());
         boolean doctor = hasRole(actor, "ROLE_DOCTOR");
         if (!owner && !doctor && !isAdmin(actor)) {
             throw new AccessDeniedException("You are not allowed to access this pet conversation.");
+        }
+    }
+
+    private void ensureChatOpenForReply(Pet pet, Owner actor) {
+        if (isChatClosed(pet) && !isAdmin(actor)) {
+            throw new IllegalArgumentException("This medical chat is closed. You can view it in history but cannot add new messages.");
         }
     }
 
@@ -498,6 +743,67 @@ public class PetServiceImpl implements PetService {
 
     private boolean isAdmin(Owner owner) {
         return hasRole(owner, "ROLE_ADMIN");
+    }
+
+    private boolean isChatClosed(Pet pet) {
+        return CHAT_STATUS_CLOSED.equalsIgnoreCase(resolveChatStatus(pet));
+    }
+
+    private String resolveChatStatus(Pet pet) {
+        return (pet.getMedicalChatStatus() == null || pet.getMedicalChatStatus().isBlank())
+                ? CHAT_STATUS_ACTIVE
+                : pet.getMedicalChatStatus();
+    }
+
+    private boolean canCloseChat(Pet pet, Owner actor) {
+        return isAdmin(actor) || (pet.getOwner() != null && pet.getOwner().getId().equals(actor.getId()));
+    }
+
+    private boolean canCloseThread(PetMedicalChatThread thread, Owner actor) {
+        return isAdmin(actor) || (thread.getPet().getOwner() != null && thread.getPet().getOwner().getId().equals(actor.getId()));
+    }
+
+    private boolean isThreadClosed(PetMedicalChatThread thread) {
+        return CHAT_STATUS_CLOSED.equalsIgnoreCase(thread.getStatus());
+    }
+
+    private MedicalChatThreadSummaryDto mapThreadSummary(PetMedicalChatThread thread) {
+        java.util.Optional<PetMedicalChatMessage> latestMessage = petMedicalChatMessageRepository
+                .findTopByThreadIdOrderByCreatedAtDesc(thread.getId());
+        long count = petMedicalChatMessageRepository.countByThreadId(thread.getId());
+        boolean hasEmergency = petMedicalChatMessageRepository.existsByThreadIdAndEmergencyTrue(thread.getId());
+
+        return MedicalChatThreadSummaryDto.builder()
+                .threadId(thread.getId())
+                .petId(thread.getPet().getId())
+                .petName(thread.getPet().getPetName())
+                .title(thread.getTitle())
+                .status(thread.getStatus())
+                .createdAt(thread.getCreatedAt())
+                .closedAt(thread.getClosedAt())
+                .closedByName(thread.getClosedByName())
+                .latestMessage(latestMessage.map(PetMedicalChatMessage::getMessage).orElse(null))
+                .latestMessageAt(latestMessage.map(PetMedicalChatMessage::getCreatedAt).orElse(null))
+                .hasEmergency(hasEmergency)
+                .messageCount(count)
+                .build();
+    }
+
+    private boolean canReplyToChat(Pet pet, Owner actor) {
+        return !isChatClosed(pet) || isAdmin(actor);
+    }
+
+    private boolean matchesStatusFilter(Pet pet, String status) {
+        String normalized = status == null ? CHAT_STATUS_ACTIVE : status.trim().toUpperCase();
+        String chatStatus = resolveChatStatus(pet).toUpperCase();
+
+        if ("ALL".equals(normalized)) {
+            return true;
+        }
+        if ("HISTORY".equals(normalized) || CHAT_STATUS_CLOSED.equals(normalized)) {
+            return CHAT_STATUS_CLOSED.equals(chatStatus);
+        }
+        return CHAT_STATUS_ACTIVE.equals(chatStatus);
     }
 
     private boolean hasRole(Owner owner, String roleName) {
@@ -639,6 +945,9 @@ public class PetServiceImpl implements PetService {
                 .latestMessageAt(latestMessageOptional.map(PetMedicalChatMessage::getCreatedAt).orElse(null))
                 .latestMessage(latestMessageOptional.map(PetMedicalChatMessage::getMessage).orElse(null))
                 .emergency(petMedicalChatMessageRepository.existsByPetIdAndEmergencyTrue(pet.getId()))
+                .chatStatus(resolveChatStatus(pet))
+                .closedAt(pet.getMedicalChatClosedAt())
+                .closedByName(pet.getMedicalChatClosedByName())
                 .build();
     }
 
