@@ -18,9 +18,10 @@ public class MedicalChatPetSearchResponseDto {
     private String assignedVetName;
     private LocalDateTime latestMessageAt;
     private String latestMessage;
+    private Long latestThreadId;
+    private String latestThreadTitle;
     private boolean emergency;
     private String chatStatus;
     private LocalDateTime closedAt;
     private String closedByName;
 }
-

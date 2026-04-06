@@ -196,7 +196,7 @@ public class PetController {
     }
 
     @PostMapping("/{petId}/medical-chat/threads")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER','ROLE_DOCTOR')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER')")
     public ResponseEntity<MedicalChatThreadResponseDto> createThread(
             @PathVariable Long petId,
             @RequestBody(required = false) MedicalChatThreadCreateRequestDto requestDto

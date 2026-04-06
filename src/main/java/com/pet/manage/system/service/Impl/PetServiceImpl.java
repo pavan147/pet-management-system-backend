@@ -552,6 +552,10 @@ public class PetServiceImpl implements PetService {
         Owner actor = getCurrentOwner();
         enforceConversationAccess(pet, actor);
 
+        if (hasRole(actor, "ROLE_DOCTOR") && !isAdmin(actor)) {
+            throw new AccessDeniedException("Doctors can reply in threads but cannot create new threads.");
+        }
+
         String resolvedTitle = (title == null || title.isBlank())
                 ? "Medical Case - " + pet.getPetName()
                 : title.trim();
@@ -934,6 +938,11 @@ public class PetServiceImpl implements PetService {
 
     private MedicalChatPetSearchResponseDto mapMedicalChatPetSearch(Pet pet) {
         Optional<PetMedicalChatMessage> latestMessageOptional = petMedicalChatMessageRepository.findTopByPetIdOrderByCreatedAtDesc(pet.getId());
+        Optional<PetMedicalChatThread> latestThreadOptional = petMedicalChatThreadRepository
+                .findByPetIdOrderByCreatedAtDesc(pet.getId())
+                .stream()
+                .findFirst();
+
         return MedicalChatPetSearchResponseDto.builder()
                 .petId(pet.getId())
                 .petName(pet.getPetName())
@@ -944,6 +953,8 @@ public class PetServiceImpl implements PetService {
                 .assignedVetName(pet.getAssignedVet() != null ? pet.getAssignedVet().getOwnerName() : null)
                 .latestMessageAt(latestMessageOptional.map(PetMedicalChatMessage::getCreatedAt).orElse(null))
                 .latestMessage(latestMessageOptional.map(PetMedicalChatMessage::getMessage).orElse(null))
+                .latestThreadId(latestThreadOptional.map(PetMedicalChatThread::getId).orElse(null))
+                .latestThreadTitle(latestThreadOptional.map(PetMedicalChatThread::getTitle).orElse(null))
                 .emergency(petMedicalChatMessageRepository.existsByPetIdAndEmergencyTrue(pet.getId()))
                 .chatStatus(resolveChatStatus(pet))
                 .closedAt(pet.getMedicalChatClosedAt())
