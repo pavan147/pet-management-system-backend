@@ -7,6 +7,7 @@ import com.pet.manage.system.dtos.VeterinaryRegistrationRequestDto;
 import com.pet.manage.system.dtos.VeterinaryRegistrationResponseDto;
 import com.pet.manage.system.entity.Owner;
 import com.pet.manage.system.entity.Role;
+import com.pet.manage.system.global.exception.DuplicateOwnerException;
 import com.pet.manage.system.repository.OwnerRepository;
 import com.pet.manage.system.repository.RoleRepository;
 import com.pet.manage.system.service.OwnerService;
@@ -17,6 +18,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -37,6 +40,18 @@ public class OwnerServiceImpl implements OwnerService {
 
     @Override
     public VeterinaryRegistrationResponseDto saveRegistration(VeterinaryRegistrationRequestDto dto) {
+        Map<String, String> duplicateErrors = new LinkedHashMap<>();
+        if (ownerRepository.existsByEmail(dto.getEmail())) {
+            duplicateErrors.put("email", "This email is already registered. Please use a different email.");
+        }
+        if (ownerRepository.existsByPhoneNumber(dto.getPhoneNumber())) {
+            duplicateErrors.put("phoneNumber", "This phone number is already registered. Please use a different number.");
+        }
+
+        if (!duplicateErrors.isEmpty()) {
+            throw new DuplicateOwnerException(duplicateErrors);
+        }
+
         String encodedPassword = passwordEncoder.encode(dto.getPassword());
         // Map DTO to Entity
         Owner entity = modelMapper.map(dto, Owner.class);

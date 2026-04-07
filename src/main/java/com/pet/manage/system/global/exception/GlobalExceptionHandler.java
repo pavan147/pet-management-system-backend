@@ -67,4 +67,9 @@ public class GlobalExceptionHandler {
         error.put("date", ex.getMessage());
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
     }
+
+    @ExceptionHandler(DuplicateOwnerException.class)
+    public ResponseEntity<Map<String, String>> handleDuplicateOwner(DuplicateOwnerException ex) {
+        return new ResponseEntity<>(ex.getFieldErrors(), HttpStatus.CONFLICT);
+    }
 }
