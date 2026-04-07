@@ -19,6 +19,9 @@ postman request POST 'localhost:8080/api/auth/login' \
 
 Pet community feature documentation:
 - `PET_COMMUNITY_SOCIAL_FEATURE.md`
+
+Lab test follow-up feature documentation:
+- `..\\LAB_TEST_MANAGEMENT_IMPLEMENTATION.md`
 	
 	
 	

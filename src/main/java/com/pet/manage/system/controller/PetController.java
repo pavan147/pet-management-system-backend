@@ -119,6 +119,62 @@ public class PetController {
                 .body(pdfBytes);
     }
 
+    @PostMapping(value = "/{petId}/lab-tests", consumes = {"multipart/form-data"})
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER')")
+    public ResponseEntity<LabTestReportResponseDto> uploadLabTestReport(
+            @PathVariable Long petId,
+            @RequestPart("file") MultipartFile file,
+            @RequestPart("title") String title,
+            @RequestPart(value = "labTestType", required = false) String labTestType,
+            @RequestPart(value = "ownerNotes", required = false) String ownerNotes
+    ) {
+        return ResponseEntity.ok(petService.uploadLabTestReport(petId, file, title, labTestType, ownerNotes));
+    }
+
+    @GetMapping("/{petId}/lab-tests")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER','ROLE_DOCTOR')")
+    public ResponseEntity<List<LabTestReportResponseDto>> getLabTestReportsForPet(@PathVariable Long petId) {
+        return ResponseEntity.ok(petService.getLabTestReportsForPet(petId));
+    }
+
+    @GetMapping("/lab-tests/search")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_DOCTOR')")
+    public ResponseEntity<List<LabTestReportResponseDto>> searchLabTestReports(
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false, defaultValue = "PENDING") String status
+    ) {
+        return ResponseEntity.ok(petService.searchLabTestReportsForDoctor(query, status));
+    }
+
+    @GetMapping("/lab-tests/{labTestReportId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER','ROLE_DOCTOR')")
+    public ResponseEntity<LabTestReportResponseDto> getLabTestReport(@PathVariable Long labTestReportId) {
+        return ResponseEntity.ok(petService.getLabTestReport(labTestReportId));
+    }
+
+    @PostMapping("/lab-tests/{labTestReportId}/review")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_DOCTOR')")
+    public ResponseEntity<LabTestReportResponseDto> reviewLabTestReport(
+            @PathVariable Long labTestReportId,
+            @RequestBody LabTestReviewRequestDto requestDto
+    ) {
+        return ResponseEntity.ok(petService.reviewLabTestReport(labTestReportId, requestDto));
+    }
+
+    @GetMapping("/lab-tests/{labTestReportId}/download")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER','ROLE_DOCTOR')")
+    public ResponseEntity<byte[]> downloadLabTestReport(@PathVariable Long labTestReportId) {
+        byte[] fileBytes = petService.downloadLabTestReport(labTestReportId);
+        String fileName = petService.getLabTestReportFileName(labTestReportId);
+        String contentType = petService.getLabTestReportContentType(labTestReportId);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(fileName).build().toString())
+                .contentType(MediaType.parseMediaType(contentType))
+                .body(fileBytes);
+    }
+
     @GetMapping("/medical-chat/{petId}")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_PET_OWNER','ROLE_DOCTOR')")
     public ResponseEntity<MedicalChatThreadResponseDto> getMedicalChatThread(@PathVariable Long petId) {

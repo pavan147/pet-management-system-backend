@@ -1,6 +1,7 @@
 package com.pet.manage.system.dtos.response;
 
 import com.pet.manage.system.dtos.OwnerResponseDto;
+import com.pet.manage.system.dtos.LabTestReportResponseDto;
 import com.pet.manage.system.dtos.PetMedicalRespnseDto;
 import com.pet.manage.system.dtos.PetResponseDto;
 import com.pet.manage.system.dtos.PetVaccinationRecorResponsedDTO;
@@ -25,4 +26,5 @@ public class PetDashboardDTO {
     private List<PetVaccinationRecorResponsedDTO> vaccinations;
     // pet medical and its prescription details
     private List<PetMedicalRespnseDto> medicalRecords;
+    private List<LabTestReportResponseDto> labTestReports;
 }

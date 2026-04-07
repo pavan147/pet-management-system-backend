@@ -13,8 +13,9 @@ import com.pet.manage.system.service.HelperUtilService;
 import com.pet.manage.system.service.PetService;
 import com.pet.manage.system.service.TelegramNotificationService;
 import org.modelmapper.ModelMapper;
-import org.modelmapper.TypeToken;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -24,12 +25,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.lang.reflect.Type;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -40,7 +42,13 @@ public class PetServiceImpl implements PetService {
     private static final String CHAT_STATUS_ACTIVE = "ACTIVE";
     private static final String CHAT_STATUS_CLOSED = "CLOSED";
     private static final long MAX_IMAGE_SIZE_BYTES = 5L * 1024 * 1024;
+    private static final long MAX_LAB_REPORT_SIZE_BYTES = 10L * 1024 * 1024;
     private static final Set<String> ALLOWED_IMAGE_TYPES = Set.of("image/jpeg", "image/png");
+    private static final Set<String> ALLOWED_LAB_REPORT_TYPES = Set.of(
+            MediaType.APPLICATION_PDF_VALUE,
+            MediaType.IMAGE_JPEG_VALUE,
+            MediaType.IMAGE_PNG_VALUE
+    );
 
     @Autowired
     private OwnerRepository ownerRepository;
@@ -56,6 +64,9 @@ public class PetServiceImpl implements PetService {
 
     @Autowired
     private PetMedicalRepository petMedicalRepository;
+
+    @Autowired
+    private PetLabTestReportRepository petLabTestReportRepository;
 
     @Autowired
     private AppointmentRepository appointmentRepository;
@@ -148,12 +159,7 @@ public class PetServiceImpl implements PetService {
                         }
                 );
 
-        Type listType = new TypeToken<List<Prescription>>() {
-        }.getType();
-        List<Prescription> prescriptions = modelMapper.map(
-                petMedicalRequestDto.getPrescriptions(), listType
-        );
-        prescriptions.forEach(prescription -> prescription.setPetMedical(petMedical));
+        List<Prescription> prescriptions = mapPrescriptionsFromDto(petMedicalRequestDto.getPrescriptions(), petMedical);
         petMedical.setPrescriptions(prescriptions);
 
         PetMedical savedPetMedical = petMedicalRepository.save(petMedical);
@@ -267,7 +273,9 @@ public class PetServiceImpl implements PetService {
                 .collect(Collectors.toList());
 
         // Get medical records
-        List<PetMedical> medicalRecords = petMedicalRepository.findByPetIdIn(petIds);
+        List<PetMedical> medicalRecords = petIds.isEmpty()
+                ? List.of()
+                : petMedicalRepository.findByPetIdInOrderByVisitDateDescPetMedicalIdDesc(petIds);
         List<PetMedicalRespnseDto> medicalDtos = medicalRecords.stream()
                 .map(record -> {
                     PetMedicalRespnseDto dto = modelMapper.map(record, PetMedicalRespnseDto.class);
@@ -276,6 +284,13 @@ public class PetServiceImpl implements PetService {
                     dto.setOwnerContact(record.getPet().getOwner().getPhoneNumber());
                     return dto;
                 })
+                .collect(Collectors.toList());
+
+        List<LabTestReportResponseDto> labTestDtos = petIds.isEmpty()
+                ? List.of()
+                : petLabTestReportRepository.findByPetIdInOrderByUploadedAtDescIdDesc(petIds)
+                .stream()
+                .map(report -> mapLabTestReport(report, owner))
                 .collect(Collectors.toList());
 
         // Get appointments
@@ -289,6 +304,7 @@ public class PetServiceImpl implements PetService {
                 .pets(petDtos)
                 .vaccinations(vaccinationDtos)
                 .medicalRecords(medicalDtos)
+                .labTestReports(labTestDtos)
                 .appointments(appointmentDtos)
                 .build();
     }
@@ -305,6 +321,136 @@ public class PetServiceImpl implements PetService {
         PetMedical record = petMedicalRepository.findForPdfByPetIdAndMedicalId(petId, petMedicalId)
                 .orElseThrow(() -> new RuntimeException("Medical record not found for provided petId and petMedicalId"));
         return helperUtilService.generatePrescriptionPdf(record);
+    }
+
+    @Override
+    @Transactional
+    public LabTestReportResponseDto uploadLabTestReport(Long petId,
+                                                        MultipartFile file,
+                                                        String title,
+                                                        String labTestType,
+                                                        String ownerNotes) {
+        Pet pet = petRepository.findById(petId)
+                .orElseThrow(() -> new RuntimeException("Pet not found for id: " + petId));
+        Owner actor = getCurrentOwner();
+
+        if (!isAdmin(actor) && !pet.getOwner().getId().equals(actor.getId())) {
+            throw new AccessDeniedException("Only the pet owner or admin can upload lab reports.");
+        }
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Please upload a PDF or image lab report.");
+        }
+
+        String normalizedContentType = validateLabReportFile(file);
+        String safeTitle = normalizeNullable(title);
+        if (safeTitle == null) {
+            safeTitle = buildDefaultLabTestTitle(file.getOriginalFilename(), labTestType, pet.getPetName());
+        }
+
+        try {
+            PetLabTestReport report = PetLabTestReport.builder()
+                    .pet(pet)
+                    .uploadedBy(actor)
+                    .title(safeTitle)
+                    .labTestType(normalizeNullable(labTestType))
+                    .ownerNotes(normalizeNullable(ownerNotes))
+                    .status(LabTestReportStatus.PENDING_REVIEW)
+                    .originalFileName(resolveSafeLabFileName(file.getOriginalFilename(), normalizedContentType))
+                    .contentType(normalizedContentType)
+                    .sizeBytes(file.getSize())
+                    .reportData(file.getBytes())
+                    .build();
+
+            PetLabTestReport saved = petLabTestReportRepository.save(report);
+            return mapLabTestReport(saved, actor);
+        } catch (IOException ex) {
+            throw new RuntimeException("Failed to read uploaded lab report.", ex);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LabTestReportResponseDto> getLabTestReportsForPet(Long petId) {
+        Pet pet = petRepository.findById(petId)
+                .orElseThrow(() -> new RuntimeException("Pet not found for id: " + petId));
+        Owner actor = getCurrentOwner();
+        enforceConversationAccess(pet, actor);
+
+        return petLabTestReportRepository.findByPetIdOrderByUploadedAtDescIdDesc(petId)
+                .stream()
+                .map(report -> mapLabTestReport(report, actor))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LabTestReportResponseDto> searchLabTestReportsForDoctor(String query, String status) {
+        Owner actor = getCurrentOwner();
+        if (!isAdmin(actor) && !hasRole(actor, "ROLE_DOCTOR")) {
+            throw new AccessDeniedException("Only doctor or admin can search lab reports.");
+        }
+
+        String normalizedQuery = query == null ? null : query.trim().toLowerCase();
+        String normalizedStatus = normalizeLabReportStatus(status);
+
+        return petLabTestReportRepository.findAll(Sort.by(Sort.Order.desc("uploadedAt"), Sort.Order.desc("id")))
+                .stream()
+                .filter(report -> matchesLabReportStatus(report, normalizedStatus))
+                .filter(report -> matchesLabReportQuery(report, normalizedQuery))
+                .map(report -> mapLabTestReport(report, actor))
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public LabTestReportResponseDto getLabTestReport(Long labTestReportId) {
+        Owner actor = getCurrentOwner();
+        return mapLabTestReport(resolveLabTestReportForAccess(labTestReportId, actor), actor);
+    }
+
+    @Override
+    @Transactional
+    public LabTestReportResponseDto reviewLabTestReport(Long labTestReportId, LabTestReviewRequestDto requestDto) {
+        Owner actor = getCurrentOwner();
+        if (!isAdmin(actor) && !hasRole(actor, "ROLE_DOCTOR")) {
+            throw new AccessDeniedException("Only doctor or admin can review lab reports.");
+        }
+
+        PetLabTestReport report = resolveLabTestReportForAccess(labTestReportId, actor);
+        report.setReviewSummary(normalizeNullable(requestDto.getReviewSummary()));
+        report.setDoctorReviewNotes(normalizeNullable(requestDto.getDoctorReviewNotes()));
+        report.setRecommendedFollowUpDate(requestDto.getRecommendedFollowUpDate());
+        report.setReviewedAt(LocalDateTime.now());
+        report.setReviewedBy(actor);
+
+        if (hasMedicalFollowUpPayload(requestDto)) {
+            PetMedical followUpMedicalRecord = createFollowUpMedicalRecord(report.getPet(), requestDto);
+            report.setFollowUpMedicalRecord(followUpMedicalRecord);
+            report.setStatus(LabTestReportStatus.PRESCRIPTION_SHARED);
+        } else {
+            report.setStatus(LabTestReportStatus.REVIEWED);
+        }
+
+        PetLabTestReport saved = petLabTestReportRepository.save(report);
+        return mapLabTestReport(saved, actor);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] downloadLabTestReport(Long labTestReportId) {
+        return resolveLabTestReportForAccess(labTestReportId, getCurrentOwner()).getReportData();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String getLabTestReportContentType(Long labTestReportId) {
+        return resolveLabTestReportForAccess(labTestReportId, getCurrentOwner()).getContentType();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String getLabTestReportFileName(Long labTestReportId) {
+        return resolveLabTestReportForAccess(labTestReportId, getCurrentOwner()).getOriginalFileName();
     }
 
     @Override
@@ -814,6 +960,194 @@ public class PetServiceImpl implements PetService {
         return owner.getRoles() != null && owner.getRoles().stream().anyMatch(role -> roleName.equals(role.getName()));
     }
 
+    private PetLabTestReport resolveLabTestReportForAccess(Long labTestReportId, Owner actor) {
+        PetLabTestReport report = petLabTestReportRepository.findById(labTestReportId)
+                .orElseThrow(() -> new RuntimeException("Lab test report not found for id: " + labTestReportId));
+        enforceConversationAccess(report.getPet(), actor);
+        return report;
+    }
+
+    private String validateLabReportFile(MultipartFile file) {
+        if (file.getSize() > MAX_LAB_REPORT_SIZE_BYTES) {
+            throw new IllegalArgumentException("Each lab report must be <= 10MB.");
+        }
+        String contentType = resolveLabReportContentType(file);
+        if (contentType == null || !ALLOWED_LAB_REPORT_TYPES.contains(contentType)) {
+            throw new IllegalArgumentException("Only PDF, JPG, and PNG lab reports are allowed.");
+        }
+        return contentType;
+    }
+
+    private String resolveLabReportContentType(MultipartFile file) {
+        String contentType = file.getContentType();
+        if (contentType != null && !contentType.isBlank() && !"application/octet-stream".equalsIgnoreCase(contentType)) {
+            return contentType.toLowerCase();
+        }
+
+        String fileName = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase();
+        if (fileName.endsWith(".pdf")) {
+            return MediaType.APPLICATION_PDF_VALUE;
+        }
+        if (fileName.endsWith(".jpg") || fileName.endsWith(".jpeg")) {
+            return MediaType.IMAGE_JPEG_VALUE;
+        }
+        if (fileName.endsWith(".png")) {
+            return MediaType.IMAGE_PNG_VALUE;
+        }
+        return contentType == null ? null : contentType.toLowerCase();
+    }
+
+    private String buildDefaultLabTestTitle(String originalFilename, String labTestType, String petName) {
+        String safeLabType = normalizeNullable(labTestType);
+        if (safeLabType != null) {
+            return safeLabType + " Report - " + petName;
+        }
+        String safeFileName = normalizeNullable(originalFilename);
+        return safeFileName != null ? safeFileName : "Lab Report - " + petName;
+    }
+
+    private String resolveSafeLabFileName(String originalFilename, String contentType) {
+        String safeOriginalName = normalizeNullable(originalFilename);
+        if (safeOriginalName != null) {
+            return safeOriginalName;
+        }
+        if (MediaType.APPLICATION_PDF_VALUE.equals(contentType)) {
+            return "lab-report.pdf";
+        }
+        if (MediaType.IMAGE_PNG_VALUE.equals(contentType)) {
+            return "lab-report.png";
+        }
+        return "lab-report.jpg";
+    }
+
+    private String normalizeLabReportStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return LabTestReportStatus.PENDING_REVIEW.name();
+        }
+        String normalized = status.trim().toUpperCase();
+        if ("ALL".equals(normalized)) {
+            return normalized;
+        }
+        if ("PENDING".equals(normalized)) {
+            return LabTestReportStatus.PENDING_REVIEW.name();
+        }
+        return normalized;
+    }
+
+    private boolean matchesLabReportStatus(PetLabTestReport report, String normalizedStatus) {
+        if ("ALL".equals(normalizedStatus)) {
+            return true;
+        }
+        return report.getStatus() != null && report.getStatus().name().equalsIgnoreCase(normalizedStatus);
+    }
+
+    private boolean matchesLabReportQuery(PetLabTestReport report, String normalizedQuery) {
+        if (normalizedQuery == null || normalizedQuery.isBlank()) {
+            return true;
+        }
+
+        return containsIgnoreCase(report.getTitle(), normalizedQuery)
+                || containsIgnoreCase(report.getLabTestType(), normalizedQuery)
+                || containsIgnoreCase(report.getPet().getPetName(), normalizedQuery)
+                || containsIgnoreCase(report.getPet().getOwner().getOwnerName(), normalizedQuery)
+                || containsIgnoreCase(report.getPet().getOwner().getPhoneNumber(), normalizedQuery)
+                || String.valueOf(report.getId()).contains(normalizedQuery)
+                || String.valueOf(report.getPet().getId()).contains(normalizedQuery);
+    }
+
+    private boolean containsIgnoreCase(String value, String normalizedQuery) {
+        return value != null && value.toLowerCase().contains(normalizedQuery);
+    }
+
+    private boolean hasMedicalFollowUpPayload(LabTestReviewRequestDto requestDto) {
+        return normalizeNullable(requestDto.getDiagnosis()) != null
+                || normalizeNullable(requestDto.getTreatmentSuggestions()) != null
+                || requestDto.getValidateTill() != null
+                || (requestDto.getPrescriptions() != null && requestDto.getPrescriptions().stream().anyMatch(this::hasMeaningfulPrescription));
+    }
+
+    private PetMedical createFollowUpMedicalRecord(Pet pet, LabTestReviewRequestDto requestDto) {
+        String updatedAllergies = normalizeNullable(requestDto.getAllergies());
+        if (updatedAllergies != null) {
+            pet.setAllergies(updatedAllergies);
+            petRepository.save(pet);
+        }
+
+        PetMedical petMedical = PetMedical.builder()
+                .pet(pet)
+                .allergies(updatedAllergies != null ? updatedAllergies : pet.getAllergies())
+                .diagnosis(firstNonBlank(requestDto.getDiagnosis(), "Follow-up review after lab test"))
+                .treatmentSuggestions(firstNonBlank(requestDto.getTreatmentSuggestions(), requestDto.getDoctorReviewNotes()))
+                .validateTill(requestDto.getValidateTill())
+                .visitDate(requestDto.getVisitDate() != null ? requestDto.getVisitDate() : LocalDate.now())
+                .build();
+
+        List<Prescription> prescriptions = mapPrescriptionsFromDto(requestDto.getPrescriptions(), petMedical);
+        petMedical.setPrescriptions(prescriptions);
+        return petMedicalRepository.save(petMedical);
+    }
+
+    private List<Prescription> mapPrescriptionsFromDto(List<PrescriptionDTO> prescriptionDtos, PetMedical petMedical) {
+        if (prescriptionDtos == null || prescriptionDtos.isEmpty()) {
+            return List.of();
+        }
+
+        return prescriptionDtos.stream()
+                .filter(Objects::nonNull)
+                .filter(this::hasMeaningfulPrescription)
+                .map(dto -> {
+                    Prescription prescription = new Prescription();
+                    prescription.setMedicine(normalizeNullable(dto.getMedicine()));
+                    prescription.setDosage(normalizeNullable(dto.getDosage()));
+                    prescription.setFrequency(dto.getFrequency() != null ? String.valueOf(dto.getFrequency()) : null);
+                    prescription.setDuration(dto.getDuration() != null ? String.valueOf(dto.getDuration()) : null);
+                    prescription.setInstructions(normalizeNullable(dto.getInstructions()));
+                    prescription.setMeal(normalizeNullable(dto.getMeal()));
+                    prescription.setMorning(hasPrescriptionTime(dto, "M", "MORNING") ? "Y" : null);
+                    prescription.setAfternoon(hasPrescriptionTime(dto, "A", "AFTERNOON") ? "Y" : null);
+                    prescription.setEvening(hasPrescriptionTime(dto, "E", "EVENING") ? "Y" : null);
+                    prescription.setNight(hasPrescriptionTime(dto, "N", "NIGHT") ? "Y" : null);
+                    prescription.setPetMedical(petMedical);
+                    return prescription;
+                })
+                .collect(Collectors.toList());
+    }
+
+    private boolean hasMeaningfulPrescription(PrescriptionDTO dto) {
+        return dto != null && (
+                normalizeNullable(dto.getMedicine()) != null
+                        || normalizeNullable(dto.getDosage()) != null
+                        || dto.getFrequency() != null
+                        || dto.getDuration() != null
+                        || normalizeNullable(dto.getInstructions()) != null
+        );
+    }
+
+    private boolean hasPrescriptionTime(PrescriptionDTO dto, String shortCode, String fullLabel) {
+        return dto.getTimes() != null && dto.getTimes().stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .anyMatch(value -> shortCode.equalsIgnoreCase(value) || fullLabel.equalsIgnoreCase(value));
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            String normalized = normalizeNullable(value);
+            if (normalized != null) {
+                return normalized;
+            }
+        }
+        return null;
+    }
+
+    private String normalizeNullable(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
     private String resolvePrimaryRole(Owner owner) {
         return owner.getRoles().stream().findFirst().map(Role::getName).orElse("ROLE_PET_OWNER");
     }
@@ -928,6 +1262,37 @@ public class PetServiceImpl implements PetService {
                     return dto;
                 })
                 .collect(Collectors.toList());
+    }
+
+    private LabTestReportResponseDto mapLabTestReport(PetLabTestReport report, Owner actor) {
+        boolean canReview = actor != null && (isAdmin(actor) || hasRole(actor, "ROLE_DOCTOR"));
+
+        return LabTestReportResponseDto.builder()
+                .id(report.getId())
+                .petId(report.getPet().getId())
+                .petName(report.getPet().getPetName())
+                .ownerId(report.getPet().getOwner().getId())
+                .ownerName(report.getPet().getOwner().getOwnerName())
+                .ownerPhoneNumber(report.getPet().getOwner().getPhoneNumber())
+                .assignedVetName(report.getPet().getAssignedVet() != null ? report.getPet().getAssignedVet().getOwnerName() : null)
+                .title(report.getTitle())
+                .labTestType(report.getLabTestType())
+                .ownerNotes(report.getOwnerNotes())
+                .status(report.getStatus())
+                .reviewSummary(report.getReviewSummary())
+                .doctorReviewNotes(report.getDoctorReviewNotes())
+                .recommendedFollowUpDate(report.getRecommendedFollowUpDate())
+                .uploadedAt(report.getUploadedAt())
+                .reviewedAt(report.getReviewedAt())
+                .reviewedByName(report.getReviewedBy() != null ? report.getReviewedBy().getOwnerName() : null)
+                .originalFileName(report.getOriginalFileName())
+                .contentType(report.getContentType())
+                .sizeBytes(report.getSizeBytes())
+                .followUpMedicalRecordId(report.getFollowUpMedicalRecord() != null ? report.getFollowUpMedicalRecord().getPetMedicalId() : null)
+                .canReview(canReview)
+                .canDownload(true)
+                .downloadUrl("/api/pets/lab-tests/" + report.getId() + "/download")
+                .build();
     }
 
     private boolean isDewormingRecord(PetVaccinationRecord record) {

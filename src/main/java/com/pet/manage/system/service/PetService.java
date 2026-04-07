@@ -31,6 +31,26 @@ public interface PetService {
 
     byte[] downloadPrescriptionPdf(Long petId, Long petMedicalId);
 
+    LabTestReportResponseDto uploadLabTestReport(Long petId,
+                                                 MultipartFile file,
+                                                 String title,
+                                                 String labTestType,
+                                                 String ownerNotes);
+
+    List<LabTestReportResponseDto> getLabTestReportsForPet(Long petId);
+
+    List<LabTestReportResponseDto> searchLabTestReportsForDoctor(String query, String status);
+
+    LabTestReportResponseDto getLabTestReport(Long labTestReportId);
+
+    LabTestReportResponseDto reviewLabTestReport(Long labTestReportId, LabTestReviewRequestDto requestDto);
+
+    byte[] downloadLabTestReport(Long labTestReportId);
+
+    String getLabTestReportContentType(Long labTestReportId);
+
+    String getLabTestReportFileName(Long labTestReportId);
+
     MedicalChatThreadResponseDto getMedicalChatThread(Long petId);
 
     List<MedicalChatPetSearchResponseDto> searchMedicalChatPets(String query, String status);
