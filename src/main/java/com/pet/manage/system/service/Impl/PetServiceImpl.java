@@ -27,6 +27,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Comparator;
@@ -163,11 +164,101 @@ public class PetServiceImpl implements PetService {
         petMedical.setPrescriptions(prescriptions);
 
         PetMedical savedPetMedical = petMedicalRepository.save(petMedical);
-        PetMedicalRespnseDto response = modelMapper.map(savedPetMedical, PetMedicalRespnseDto.class);
-        response.setPetMedicalId(savedPetMedical.getPetMedicalId());
-        response.setPetId(savedPetMedical.getPet().getId());
-        response.setOwnerContact(savedPetMedical.getPet().getOwner().getPhoneNumber());
-        return response;
+        return mapMedicalRecord(savedPetMedical);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DoctorPetSearchResponseDto> searchPetsForDoctor(String query) {
+        Owner actor = getCurrentOwner();
+        if (!isAdmin(actor) && !hasRole(actor, "ROLE_DOCTOR")) {
+            throw new AccessDeniedException("Only doctor or admin can search pets for diagnosis history.");
+        }
+
+        return petRepository.searchPetsForDoctor(query == null ? null : query.trim())
+                .stream()
+                .map(pet -> DoctorPetSearchResponseDto.builder()
+                        .petId(pet.getId())
+                        .petName(pet.getPetName())
+                        .petType(pet.getPetType())
+                        .breed(pet.getBreed())
+                        .ownerName(pet.getOwner() != null ? pet.getOwner().getOwnerName() : null)
+                        .ownerPhoneNumber(pet.getOwner() != null ? pet.getOwner().getPhoneNumber() : null)
+                        .ownerEmail(pet.getOwner() != null ? pet.getOwner().getEmail() : null)
+                        .assignedVetName(pet.getAssignedVet() != null ? pet.getAssignedVet().getOwnerName() : null)
+                        .lastVisitDate(petMedicalRepository.findTopByPetIdOrderByVisitDateDescPetMedicalIdDesc(pet.getId())
+                                .map(PetMedical::getVisitDate)
+                                .orElse(null))
+                        .build())
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DoctorPetHistoryResponseDto getPetHistoryForDoctor(Long petId) {
+        Owner actor = getCurrentOwner();
+        if (!isAdmin(actor) && !hasRole(actor, "ROLE_DOCTOR")) {
+            throw new AccessDeniedException("Only doctor or admin can access pet diagnosis history.");
+        }
+
+        Pet pet = petRepository.findById(petId)
+                .orElseThrow(() -> new RuntimeException("Pet not found for id: " + petId));
+
+        List<PetMedicalRespnseDto> history = petMedicalRepository.findByPetIdOrderByVisitDateDesc(petId)
+                .stream()
+                .map(this::mapMedicalRecord)
+                .collect(Collectors.toList());
+
+        return DoctorPetHistoryResponseDto.builder()
+                .petId(pet.getId())
+                .petName(pet.getPetName())
+                .petType(pet.getPetType())
+                .breed(pet.getBreed())
+                .allergies(pet.getAllergies())
+                .ownerName(pet.getOwner() != null ? pet.getOwner().getOwnerName() : null)
+                .ownerPhoneNumber(pet.getOwner() != null ? pet.getOwner().getPhoneNumber() : null)
+                .ownerEmail(pet.getOwner() != null ? pet.getOwner().getEmail() : null)
+                .assignedVetName(pet.getAssignedVet() != null ? pet.getAssignedVet().getOwnerName() : null)
+                .medicalHistory(history)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public PetMedicalRespnseDto createDiagnosisFromHistory(Long petId, PetMedicalRequestDto petMedicalRequestDto) {
+        Owner actor = getCurrentOwner();
+        if (!isAdmin(actor) && !hasRole(actor, "ROLE_DOCTOR")) {
+            throw new AccessDeniedException("Only doctor or admin can create diagnosis from history.");
+        }
+
+        Pet pet = petRepository.findById(petId)
+                .orElseThrow(() -> new RuntimeException("Pet not found for id: " + petId));
+
+        String diagnosis = normalizeNullable(petMedicalRequestDto.getDiagnosis());
+        if (diagnosis == null) {
+            throw new IllegalArgumentException("Diagnosis is required.");
+        }
+
+        String allergies = normalizeNullable(petMedicalRequestDto.getAllergies());
+        if (allergies != null) {
+            pet.setAllergies(allergies);
+            petRepository.save(pet);
+        }
+
+        PetMedical petMedical = PetMedical.builder()
+                .pet(pet)
+                .allergies(allergies != null ? allergies : pet.getAllergies())
+                .diagnosis(diagnosis)
+                .treatmentSuggestions(normalizeNullable(petMedicalRequestDto.getTreatmentSuggestions()))
+                .validateTill(petMedicalRequestDto.getValidateTill())
+                .visitDate(petMedicalRequestDto.getVisitDate() != null ? petMedicalRequestDto.getVisitDate() : LocalDate.now())
+                .build();
+
+        List<Prescription> prescriptions = mapPrescriptionsFromDto(petMedicalRequestDto.getPrescriptions(), petMedical);
+        petMedical.setPrescriptions(prescriptions);
+
+        PetMedical saved = petMedicalRepository.save(petMedical);
+        return mapMedicalRecord(saved);
     }
 
     @Override
@@ -1254,14 +1345,53 @@ public class PetServiceImpl implements PetService {
     private List<PetMedicalRespnseDto> getMedicalRecordsForPet(Long petId) {
         return petMedicalRepository.findByPetIdOrderByVisitDateDesc(petId)
                 .stream()
-                .map(record -> {
-                    PetMedicalRespnseDto dto = modelMapper.map(record, PetMedicalRespnseDto.class);
-                    dto.setPetMedicalId(record.getPetMedicalId());
-                    dto.setPetId(record.getPet().getId());
-                    dto.setOwnerContact(record.getPet().getOwner().getPhoneNumber());
-                    return dto;
-                })
+                .map(this::mapMedicalRecord)
                 .collect(Collectors.toList());
+    }
+
+    private PetMedicalRespnseDto mapMedicalRecord(PetMedical record) {
+        PetMedicalRespnseDto dto = modelMapper.map(record, PetMedicalRespnseDto.class);
+        dto.setPetMedicalId(record.getPetMedicalId());
+        dto.setPetId(record.getPet().getId());
+        dto.setOwnerContact(record.getPet().getOwner().getPhoneNumber());
+        dto.setPrescriptions(record.getPrescriptions() == null
+                ? List.of()
+                : record.getPrescriptions().stream().map(this::mapPrescription).collect(Collectors.toList()));
+        return dto;
+    }
+
+    private PrescriptionDTO mapPrescription(Prescription prescription) {
+        PrescriptionDTO dto = new PrescriptionDTO();
+        dto.setMedicine(prescription.getMedicine());
+        dto.setDosage(prescription.getDosage());
+        dto.setFrequency(parseInteger(prescription.getFrequency()));
+        dto.setDuration(parseInteger(prescription.getDuration()));
+        dto.setInstructions(prescription.getInstructions());
+        dto.setMeal(prescription.getMeal());
+
+        List<String> times = new ArrayList<>();
+        if ("Y".equalsIgnoreCase(prescription.getMorning())) {
+            times.add("M");
+        }
+        if ("Y".equalsIgnoreCase(prescription.getAfternoon())) {
+            times.add("A");
+        }
+        if ("Y".equalsIgnoreCase(prescription.getEvening())) {
+            times.add("E");
+        }
+        if ("Y".equalsIgnoreCase(prescription.getNight())) {
+            times.add("N");
+        }
+        dto.setTimes(times);
+        return dto;
+    }
+
+    private Integer parseInteger(String value) {
+        try {
+            return value == null ? null : Integer.parseInt(value);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private LabTestReportResponseDto mapLabTestReport(PetLabTestReport report, Owner actor) {

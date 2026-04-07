@@ -88,4 +88,10 @@ public interface PetService {
                                                        MultipartFile[] files,
                                                        String message,
                                                        boolean emergency);
+
+    List<DoctorPetSearchResponseDto> searchPetsForDoctor(String query);
+
+    DoctorPetHistoryResponseDto getPetHistoryForDoctor(Long petId);
+
+    PetMedicalRespnseDto createDiagnosisFromHistory(Long petId, PetMedicalRequestDto petMedicalRequestDto);
 }

@@ -29,4 +29,23 @@ public interface PetRepository extends JpaRepository<Pet, Long> {
 			order by p.id desc
 			""")
 	List<Pet> searchPetsWithMedicalChat(@Param("query") String query);
+
+	@Query("""
+			select distinct p
+			from Pet p
+			left join fetch p.owner o
+			left join fetch p.assignedVet av
+			where (
+				:query is null or trim(:query) = ''
+				or lower(p.petName) like lower(concat('%', :query, '%'))
+				or lower(p.petType) like lower(concat('%', :query, '%'))
+				or lower(p.breed) like lower(concat('%', :query, '%'))
+				or lower(o.ownerName) like lower(concat('%', :query, '%'))
+				or lower(o.phoneNumber) like lower(concat('%', :query, '%'))
+				or lower(o.email) like lower(concat('%', :query, '%'))
+				or str(p.id) like concat('%', :query, '%')
+			)
+			order by p.id desc
+			""")
+	List<Pet> searchPetsForDoctor(@Param("query") String query);
 }

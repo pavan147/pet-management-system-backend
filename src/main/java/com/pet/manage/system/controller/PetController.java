@@ -75,6 +75,27 @@ public class PetController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/doctor/search")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_DOCTOR')")
+    public ResponseEntity<List<DoctorPetSearchResponseDto>> searchPetsForDoctor(@RequestParam(required = false) String query) {
+        return ResponseEntity.ok(petService.searchPetsForDoctor(query));
+    }
+
+    @GetMapping("/doctor/{petId}/history")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_DOCTOR')")
+    public ResponseEntity<DoctorPetHistoryResponseDto> getPetHistoryForDoctor(@PathVariable Long petId) {
+        return ResponseEntity.ok(petService.getPetHistoryForDoctor(petId));
+    }
+
+    @PostMapping("/doctor/{petId}/diagnosis")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_DOCTOR')")
+    public ResponseEntity<PetMedicalRespnseDto> createDiagnosisFromHistory(
+            @PathVariable Long petId,
+            @RequestBody PetMedicalRequestDto petMedicalRequestDto
+    ) {
+        return ResponseEntity.ok(petService.createDiagnosisFromHistory(petId, petMedicalRequestDto));
+    }
+
 
     @PostMapping("/book-appointment")
     public AppointmentResponseDTO createAppointment(@Valid  @RequestBody AppointmentRequestDTO dto) {
